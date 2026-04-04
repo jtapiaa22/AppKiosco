@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useStock } from '@/hooks/useStock'
 import FilaProducto from '@/components/stock/FilaProducto'
 import ModalProducto from '@/components/stock/ModalProducto'
 import ModalAjusteStock from '@/components/stock/ModalAjusteStock'
+
+const API = 'http://localhost:3001'
+const POLL_INTERVAL = 2000
 
 export default function Stock() {
   const {
@@ -15,8 +18,33 @@ export default function Stock() {
   const [modalProducto, setModalProducto]     = useState(null)
   const [modalAjuste, setModalAjuste]         = useState(null)
   const [confirmEliminar, setConfirmEliminar] = useState(null)
+  const [escanerActivo, setEscanerActivo]     = useState(false)
+  const pollRef = useRef(null)
 
   const stocksBajos = productos.filter(p => p.stock_actual <= p.stock_minimo).length
+
+  // ── Polling: escucha codigos enviados desde el celular ──────────────────
+  useEffect(() => {
+    if (!escanerActivo) {
+      clearInterval(pollRef.current)
+      return
+    }
+    pollRef.current = setInterval(async () => {
+      try {
+        const res  = await fetch(`${API}/api/scan/pending`)
+        const data = await res.json()
+        if (data.pending && data.codigo) {
+          clearInterval(pollRef.current)
+          setEscanerActivo(false)
+          // Abrir modal con el codigo ya cargado
+          setModalProducto({ codigo_barras: data.codigo })
+        }
+      } catch {
+        // silencioso — el servidor puede no estar listo aun
+      }
+    }, POLL_INTERVAL)
+    return () => clearInterval(pollRef.current)
+  }, [escanerActivo])
 
   async function handleEliminar(id) {
     await eliminarProducto(id)
@@ -34,12 +62,42 @@ export default function Stock() {
             {stocksBajos > 0 && <span className="ml-2 text-amber-400">· {stocksBajos} con stock bajo</span>}
           </p>
         </div>
-        <button onClick={() => setModalProducto({})}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500
-                     text-white text-sm font-medium transition-colors">
-          <span className="text-base leading-none">+</span> Nuevo producto
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Boton escaner celular */}
+          <button
+            onClick={() => setEscanerActivo(v => !v)}
+            title={escanerActivo ? 'Cancelar escaneo' : 'Escanear con el celular'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
+              ${
+                escanerActivo
+                  ? 'bg-amber-500/20 border border-amber-500/50 text-amber-300 animate-pulse'
+                  : 'bg-gray-800 border border-gray-700 text-gray-300 hover:border-gray-600'
+              }`}>
+            📷 {escanerActivo ? 'Esperando...' : 'Escanear'}
+          </button>
+          <button onClick={() => setModalProducto({})}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500
+                       text-white text-sm font-medium transition-colors">
+            <span className="text-base leading-none">+</span> Nuevo producto
+          </button>
+        </div>
       </div>
+
+      {/* Banner de espera de escaneo */}
+      {escanerActivo && (
+        <div className="flex items-center gap-3 px-6 py-3 bg-amber-500/10 border-b border-amber-500/30">
+          <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <p className="text-amber-300 text-sm">
+            Esperando código del celular…
+            <span className="text-amber-400/60 text-xs ml-2">Escaneá el producto en la app móvil</span>
+          </p>
+          <button
+            onClick={() => setEscanerActivo(false)}
+            className="ml-auto text-amber-400/60 hover:text-amber-300 text-xs">
+            Cancelar
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-800 flex-shrink-0">
         <div className="relative flex-1 max-w-md">
@@ -106,6 +164,7 @@ export default function Stock() {
       {modalProducto !== null && (
         <ModalProducto
           producto={modalProducto?.id ? modalProducto : null}
+          codigoEscaneado={!modalProducto?.id ? modalProducto?.codigo_barras : undefined}
           onGuardar={guardarProducto}
           onCerrar={() => setModalProducto(null)}
         />
