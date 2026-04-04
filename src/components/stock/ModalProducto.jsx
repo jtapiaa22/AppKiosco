@@ -8,6 +8,31 @@ const VACIO = {
   stock_actual: '', stock_minimo: '5', categoria: '',
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+// true si estamos dentro de Electron (preload expone electronAPI)
+const isElectron = () => Boolean(window.electronAPI)
+
+// Obtiene la URL base del servidor local sin depender de Electron
+function getLocalApiBase() {
+  const host = window.location.hostname || 'localhost'
+  return `http://${host}:3001`
+}
+
+// Solicita la URL del escaner:
+//   - En Electron: usa IPC para obtener ngrok o IP local
+//   - En browser:  usa la IP del host directamente (HTTP LAN)
+async function resolveEscanerUrl() {
+  if (isElectron()) {
+    const fullUrl = await window.electronAPI.getApiUrl()
+    const status  = await window.electronAPI.getNgrokStatus()
+    return { url: fullUrl, ngrok: status.activo }
+  }
+  // Modo dev: servidor corre en :3001, misma IP que el front
+  const base = getLocalApiBase()
+  return { url: `${base}/escaner`, ngrok: false }
+}
+
 // QR simple via API gratuita (no requiere lib)
 function QRImage({ url }) {
   const encoded = encodeURIComponent(url)
@@ -21,6 +46,8 @@ function QRImage({ url }) {
     />
   )
 }
+
+// ── Componente ─────────────────────────────────────────────────────────────
 
 export default function ModalProducto({ producto, onGuardar, onCerrar }) {
   const [form, setForm]                       = useState(VACIO)
@@ -64,6 +91,8 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // ── API Open Food Facts ───────────────────────────────────────────────
+
   async function buscarEnAPI() {
     if (!form.codigo_barras) return
     setBuscandoBarras(true)
@@ -101,17 +130,15 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     setEscanerMsg('Obteniendo URL...')
 
     try {
-      // Pedir la URL al proceso principal (ngrok o IP local)
-      const fullUrl = await window.electronAPI.getApiUrl()
-      const status  = await window.electronAPI.getNgrokStatus()
-      setNgrokActivo(status.activo)
-      setEscanerUrl(fullUrl)
-      setEscanerMsg(status.activo
+      const { url, ngrok } = await resolveEscanerUrl()
+      setNgrokActivo(ngrok)
+      setEscanerUrl(url)
+      setEscanerMsg(ngrok
         ? 'Escaneá el QR con el celular'
         : 'Escáner en red local — mismo WiFi')
 
-      // Base para el polling: quitar /escaner y ?mode=pc
-      const base = fullUrl.replace('/escaner', '').replace('?mode=pc', '')
+      // Base para polling: URL sin /escaner ni query params
+      const base = url.replace('/escaner', '').split('?')[0]
       pollingBaseRef.current = base
 
       // Limpiar pendiente anterior
@@ -131,6 +158,9 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
         }
       }, 1200)
 
+    } catch (e) {
+      console.error('[Escáner]', e)
+      setEscanerMsg('Error al obtener URL')
     } finally {
       setCargandoUrl(false)
     }
@@ -176,7 +206,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     setTimeout(() => setEscanerActivo(false), 2000)
   }
 
-  // ── Submit ─────────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
     if (!form.nombre.trim()) return setError('El nombre es obligatorio')
@@ -196,6 +226,8 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
   const margen = form.precio_costo && form.precio_venta
     ? (((parseFloat(form.precio_venta) - parseFloat(form.precio_costo)) / parseFloat(form.precio_costo)) * 100).toFixed(0)
     : null
+
+  // ── Render ────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -289,7 +321,6 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                     {escanerMsg}
                   </p>
 
-                  {/* QR si ngrok está activo, URL si es LAN */}
                   {ngrokActivo ? (
                     <div className="flex flex-col items-center gap-2">
                       <QRImage url={`${escanerUrl}?mode=pc`} />
@@ -303,9 +334,11 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                       <code className="text-xs text-violet-300 bg-gray-800 px-2 py-1 rounded block break-all">
                         {escanerUrl}?mode=pc
                       </code>
-                      <p className="text-xs text-amber-400/70 mt-2">
-                        ⚠️ Sin ngrok — instalá ngrok para usar QR y cámara desde cualquier red
-                      </p>
+                      {!isElectron() && (
+                        <p className="text-xs text-amber-400/70 mt-2">
+                          ⚠️ Modo dev — la cámara del celu funciona solo en Electron con ngrok activo
+                        </p>
+                      )}
                     </>
                   )}
 
