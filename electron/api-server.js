@@ -1,24 +1,28 @@
 /**
- * api-server.js — Mini servidor HTTP local para acceso desde el celular
+ * api-server.js — Mini servidor HTTPS local para acceso desde el celular
  *
- * Levanta en el puerto 3001 y expone:
+ * Levanta en el puerto 3001 con HTTPS (certificado autofirmado).
+ * El celu debe aceptar el certificado la primera vez.
+ *
+ * Rutas:
+ *   GET  /                       → redirige a /escaner
+ *   GET  /escaner                → sirve la mini web móvil
  *   GET  /api/productos          → lista todos los productos
  *   GET  /api/productos/:codigo  → busca por código de barras
  *   POST /api/productos          → crea un producto nuevo
  *   PUT  /api/productos/:id      → edita un producto existente
- *   GET  /escaner                → sirve la mini web para el celular
- *
- * Se llama desde main.js con: startApiServer(getDB)
  */
 
-const http = require('http')
-const fs   = require('fs')
-const path = require('path')
-const os   = require('os')
+const https = require('https')
+const fs    = require('fs')
+const path  = require('path')
+const os    = require('os')
 
-const PORT = 3001
+const PORT      = 3001
+const CERT_PATH = path.join(__dirname, 'cert.pem')
+const KEY_PATH  = path.join(__dirname, 'key.pem')
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────
 
 function json(res, status, data) {
   const body = JSON.stringify(data)
@@ -43,8 +47,7 @@ function readBody(req) {
   })
 }
 
-// Devuelve la IP local de la PC en la red WiFi
-function getLocalIP() {
+export function getLocalIP() {
   const interfaces = os.networkInterfaces()
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
@@ -56,10 +59,23 @@ function getLocalIP() {
   return 'localhost'
 }
 
-// ── Servidor ───────────────────────────────────────────────────────────────
+// ── Servidor HTTPS ────────────────────────────────────────────────
 
 function startApiServer(getDB) {
-  const server = http.createServer(async (req, res) => {
+  // Verificar que existan los certificados
+  if (!fs.existsSync(CERT_PATH) || !fs.existsSync(KEY_PATH)) {
+    console.error('[API] ❌ Certificados SSL no encontrados en electron/cert.pem y electron/key.pem')
+    console.error('[API] Generálos con:')
+    console.error('  cd electron && openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=TU_IP" -addext "subjectAltName=IP:TU_IP"')
+    return null
+  }
+
+  const sslOptions = {
+    key:  fs.readFileSync(KEY_PATH),
+    cert: fs.readFileSync(CERT_PATH),
+  }
+
+  const server = https.createServer(sslOptions, async (req, res) => {
     const url    = req.url.split('?')[0]
     const method = req.method
 
@@ -73,7 +89,7 @@ function startApiServer(getDB) {
       return res.end()
     }
 
-    // ── Servir la mini web del escáner ────────────────────────────────────
+    // ── Servir la mini web del escáner ─────────────────────────────────
     if (method === 'GET' && (url === '/' || url === '/escaner')) {
       const htmlPath = path.join(__dirname, 'escaner.html')
       if (fs.existsSync(htmlPath)) {
@@ -85,7 +101,7 @@ function startApiServer(getDB) {
 
     const db = getDB()
 
-    // ── GET /api/productos ────────────────────────────────────────────────
+    // ── GET /api/productos ────────────────────────────────────────────
     if (method === 'GET' && url === '/api/productos') {
       try {
         const rows = db.prepare('SELECT * FROM productos ORDER BY nombre ASC').all()
@@ -95,7 +111,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── GET /api/productos/:codigo ────────────────────────────────────────
+    // ── GET /api/productos/:codigo ────────────────────────────────────
     const matchCodigo = url.match(/^\/api\/productos\/(.+)$/)
     if (method === 'GET' && matchCodigo) {
       try {
@@ -110,7 +126,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── POST /api/productos ───────────────────────────────────────────────
+    // ── POST /api/productos ────────────────────────────────────────────
     if (method === 'POST' && url === '/api/productos') {
       try {
         const body = await readBody(req)
@@ -140,7 +156,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── PUT /api/productos/:id ────────────────────────────────────────────
+    // ── PUT /api/productos/:id ─────────────────────────────────────────
     const matchId = url.match(/^\/api\/productos\/(\d+)$/)
     if (method === 'PUT' && matchId) {
       try {
@@ -170,19 +186,20 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── 404 ───────────────────────────────────────────────────────────────
+    // ── 404 ────────────────────────────────────────────────────────────
     return json(res, 404, { error: 'Ruta no encontrada' })
   })
 
   server.listen(PORT, '0.0.0.0', () => {
     const ip = getLocalIP()
-    console.log(`[API] Servidor local corriendo en http://${ip}:${PORT}`)
-    console.log(`[API] Escáner móvil: http://${ip}:${PORT}/escaner`)
+    console.log(`[API] Servidor HTTPS corriendo en https://${ip}:${PORT}`)
+    console.log(`[API] Escáner móvil: https://${ip}:${PORT}/escaner`)
+    console.log(`[API] Primera vez: aceptá el certificado en el celu`)
   })
 
   server.on('error', (e) => {
     if (e.code === 'EADDRINUSE') {
-      console.warn(`[API] Puerto ${PORT} ocupado, el servidor no pudo iniciar.`)
+      console.warn(`[API] Puerto ${PORT} ocupado.`)
     } else {
       console.error('[API] Error:', e.message)
     }
