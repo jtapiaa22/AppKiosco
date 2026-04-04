@@ -1,21 +1,25 @@
 /**
  * ModalEscaner.jsx
- * Modal que muestra el QR para que el celu entre al escaner,
- * hace polling a /api/scan/pending y devuelve el codigo via onCodigo().
+ * - El QR apunta a ngrok (para que el celu acceda desde cualquier red)
+ * - El POLLING siempre usa localhost:3001 (la app corre en la misma PC, no necesita ngrok)
  */
 import { useState, useEffect, useRef } from 'react'
 
 const isElectron = () => typeof window !== 'undefined' && Boolean(window.electronAPI)
 
-async function resolveEscanerUrl() {
+// URL para mostrar en el QR (puede ser ngrok)
+async function resolveQrUrl() {
   if (isElectron()) {
-    const url    = await window.electronAPI.getApiUrl()
+    const url = await window.electronAPI.getApiUrl()
     const status = await window.electronAPI.getNgrokStatus()
-    return { url, ngrok: status.activo }
+    return { qrUrl: url, ngrok: status.activo }
   }
   const host = window.location.hostname || 'localhost'
-  return { url: `http://${host}:3001/escaner`, ngrok: false }
+  return { qrUrl: `http://${host}:3001/escaner`, ngrok: false }
 }
+
+// Base para el POLLING siempre local (la PC se consulta a si misma)
+const POLLING_BASE = 'http://localhost:3001'
 
 function QRImage({ url }) {
   return (
@@ -32,10 +36,9 @@ function QRImage({ url }) {
 export default function ModalEscaner({ onCodigo, onCerrar }) {
   const [escanerUrl, setEscanerUrl] = useState('')
   const [ngrokActivo, setNgrokActivo] = useState(false)
-  const [estado, setEstado] = useState('cargando') // cargando | esperando | recibido | error
+  const [estado, setEstado] = useState('cargando')
   const [codigoRecibido, setCodigoRecibido] = useState('')
   const pollingRef = useRef(null)
-  const baseRef    = useRef('')
 
   useEffect(() => {
     init()
@@ -44,27 +47,33 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
 
   async function init() {
     try {
-      const { url, ngrok } = await resolveEscanerUrl()
+      const { qrUrl, ngrok } = await resolveQrUrl()
       setNgrokActivo(ngrok)
-      setEscanerUrl(url)
-      const base = url.replace('/escaner', '').split('?')[0]
-      baseRef.current = base
-      // Limpiar cualquier codigo anterior
-      await fetch(`${base}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+      setEscanerUrl(qrUrl)
+
+      // Limpiar codigo anterior usando localhost (siempre local)
+      await fetch(`${POLLING_BASE}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+
       setEstado('esperando')
+
+      // Polling SIEMPRE a localhost, sin SSL
       pollingRef.current = setInterval(async () => {
         try {
-          const res  = await fetch(`${base}/api/scan/pending`)
+          const res  = await fetch(`${POLLING_BASE}/api/scan/pending`)
+          if (!res.ok) return
           const data = await res.json()
           if (data.pending && data.codigo) {
             detener()
             setCodigoRecibido(data.codigo)
             setEstado('recibido')
-            setTimeout(() => onCodigo(data.codigo), 1200)
+            setTimeout(() => onCodigo(data.codigo), 1000)
           }
-        } catch { /* silencioso */ }
-      }, 1200)
-    } catch {
+        } catch (err) {
+          console.warn('[ModalEscaner] polling error:', err)
+        }
+      }, 1000)
+    } catch (err) {
+      console.error('[ModalEscaner] init error:', err)
       setEstado('error')
     }
   }
@@ -75,7 +84,7 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
 
   function handleCerrar() {
     detener()
-    if (baseRef.current) fetch(`${baseRef.current}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+    fetch(`${POLLING_BASE}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
     onCerrar()
   }
 
@@ -103,7 +112,7 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
 
           {estado === 'error' && (
             <div className="text-center py-6">
-              <p className="text-red-400 text-sm">No se pudo obtener la URL del escaner.</p>
+              <p className="text-red-400 text-sm">No se pudo iniciar el escáner.</p>
               <p className="text-gray-500 text-xs mt-1">Verificá que la app esté corriendo en modo Electron.</p>
             </div>
           )}
@@ -116,15 +125,12 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
                   : 'Abrí esta URL en el celular (mismo WiFi)'}
               </p>
 
-              {ngrokActivo ? (
-                <QRImage url={`${escanerUrl}?mode=pc`} />
-              ) : (
-                <div className="w-full">
-                  <QRImage url={`${escanerUrl}?mode=pc`} />
-                  <code className="mt-3 block text-xs text-violet-300 bg-gray-800 px-3 py-2 rounded-xl break-all text-center">
-                    {escanerUrl}?mode=pc
-                  </code>
-                </div>
+              <QRImage url={`${escanerUrl}?mode=pc`} />
+
+              {!ngrokActivo && (
+                <code className="text-xs text-violet-300 bg-gray-800 px-3 py-2 rounded-xl break-all text-center w-full">
+                  {escanerUrl}?mode=pc
+                </code>
               )}
 
               <div className="flex items-center gap-2 mt-1">
