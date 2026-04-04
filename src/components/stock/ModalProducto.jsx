@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { lookupBarcode, lookupByName } from '@/services/barcode'
 import BuscadorOFF from '@/components/stock/BuscadorOFF'
 import BuscadorImagenes from '@/components/stock/BuscadorImagenes'
@@ -9,21 +9,20 @@ const VACIO = {
   stock_actual: '', stock_minimo: '5', categoria: '',
 }
 
+/**
+ * Props:
+ *   producto        — objeto con datos si es edición, null si es nuevo
+ *   codigoEscaneado — string con el código de barras leído por el escáner (solo nuevo)
+ *   onGuardar       — async fn(form, id|null)
+ *   onCerrar        — fn()
+ */
 export default function ModalProducto({ producto, codigoEscaneado, onGuardar, onCerrar }) {
-  const [form, setForm]                       = useState(VACIO)
-  const [buscandoBarras, setBuscandoBarras]   = useState(false)
-  const [guardando, setGuardando]             = useState(false)
-  const [error, setError]                     = useState('')
-  const [infoMsg, setInfoMsg]                 = useState('')
-  const [mostrarBuscadorOFF, setMostrarBuscadorOFF]   = useState(false)
-  const [mostrarBuscadorImg, setMostrarBuscadorImg]   = useState(false)
-
   const esEdicion = Boolean(producto?.id)
 
-  // ── Inicializar form ──────────────────────────────────────────────────
-  useEffect(() => {
+  // Inicializamos el form UNA sola vez al montar, con toda la info disponible
+  const [form, setForm] = useState(() => {
     if (producto) {
-      setForm({
+      return {
         codigo_barras: producto.codigo_barras || '',
         nombre:        producto.nombre || '',
         descripcion:   producto.descripcion || '',
@@ -33,53 +32,59 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
         stock_actual:  producto.stock_actual?.toString() || '',
         stock_minimo:  producto.stock_minimo?.toString() || '5',
         categoria:     producto.categoria || '',
-      })
-    } else {
-      setForm(VACIO)
+      }
     }
-  }, [producto])
+    // Nuevo producto: si hay código escaneado lo precargamos
+    return { ...VACIO, codigo_barras: codigoEscaneado || '' }
+  })
 
-  // Si llega un codigo escaneado desde afuera, buscar y autocompletar
+  const [buscandoBarras, setBuscandoBarras] = useState(false)
+  const [guardando, setGuardando]           = useState(false)
+  const [error, setError]                   = useState('')
+  const [infoMsg, setInfoMsg]               = useState('')
+  const [mostrarBuscadorOFF, setMostrarBuscadorOFF] = useState(false)
+  const [mostrarBuscadorImg, setMostrarBuscadorImg] = useState(false)
+
+  // Si llegó un código escaneado, arrancar búsqueda automática al montar
   useEffect(() => {
-    if (!codigoEscaneado) return
-    buscarPorCodigo(codigoEscaneado)
-  }, [codigoEscaneado])
+    if (codigoEscaneado) {
+      buscarPorCodigo(codigoEscaneado)
+    }
+    // Solo al montar — la dep array vacía es intencional
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // ── Buscar por código de barras ──────────────────────────────────────
+  // ── Buscar por código de barras en Open Food Facts ───────────────────
   async function buscarPorCodigo(codigo) {
     if (!codigo) return
     setBuscandoBarras(true)
     setInfoMsg('Buscando en base de datos...')
+    // Asegurar que el campo muestre el código
     setForm(f => ({ ...f, codigo_barras: codigo }))
 
-    // 1) Intentar Open Food Facts por codigo
     let datos = await lookupBarcode(codigo)
-
-    // 2) Si no encontro nada, intentar por nombre si hay nombre cargado
-    if (!datos && form.nombre) {
-      datos = await lookupByName(form.nombre)
-    }
 
     setBuscandoBarras(false)
     if (datos) {
       setForm(f => ({
         ...f,
         codigo_barras: codigo,
-        nombre:        datos.nombre    || f.nombre,
-        foto_url:      datos.foto_url  || f.foto_url,
-        categoria:     datos.categoria || f.categoria,
+        nombre:        datos.nombre      || f.nombre,
+        foto_url:      datos.foto_url    || f.foto_url,
+        categoria:     datos.categoria   || f.categoria,
         descripcion:   datos.descripcion || f.descripcion,
       }))
-      setInfoMsg(`✓ Autocompleto: ${datos.nombre}`)
-      setTimeout(() => setInfoMsg(''), 3000)
+      setInfoMsg(`✓ Autocompletado: ${datos.nombre}`)
+      setTimeout(() => setInfoMsg(''), 3500)
     } else {
-      setInfoMsg('No encontrado en la base de datos — completá manualmente')
-      setTimeout(() => setInfoMsg(''), 4000)
+      setInfoMsg('No encontrado en la base de datos — completá los datos manualmente')
+      setTimeout(() => setInfoMsg(''), 4500)
     }
   }
 
+  // ── Botón Buscar manual (código o nombre) ────────────────────────────
   async function handleBuscarAPI() {
     const termino = form.codigo_barras || form.nombre
     if (!termino) return
@@ -87,7 +92,6 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
     setInfoMsg('Buscando...')
     setError('')
 
-    // Intentar por codigo primero, luego por nombre
     let datos = null
     if (form.codigo_barras) datos = await lookupBarcode(form.codigo_barras)
     if (!datos && form.nombre) datos = await lookupByName(form.nombre)
@@ -104,8 +108,8 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
       setInfoMsg(`✓ ${datos.nombre}`)
       setTimeout(() => setInfoMsg(''), 3000)
     } else {
-      setError('No encontrado. Completá los datos manualmente.')
-      setTimeout(() => setError(''), 4000)
+      setError('No encontrado. Completá los datos manualmente o buscá la imagen.')
+      setTimeout(() => setError(''), 4500)
     }
   }
 
@@ -118,9 +122,10 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
       foto_url:      datos.foto_url      || f.foto_url,
       categoria:     datos.categoria     || f.categoria,
     }))
+    setMostrarBuscadorOFF(false)
   }
 
-  // ── Submit ─────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (!form.nombre.trim()) return setError('El nombre es obligatorio')
     if (!form.precio_venta)  return setError('El precio de venta es obligatorio')
@@ -203,13 +208,13 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
                   {buscandoBarras ? 'Buscando...' : 'Buscar'}
                 </button>
               </div>
-              <p className="text-xs text-gray-600 mt-1">Ingresá el código o el nombre y presíonaná Buscar</p>
+              <p className="text-xs text-gray-600 mt-1">Ingresá el código o el nombre y presioná Buscar</p>
             </div>
 
             {/* Foto */}
             <div className="flex gap-3 items-start">
               <div className="w-20 h-20 rounded-xl bg-gray-800 border border-gray-700 overflow-hidden
-                             flex items-center justify-center flex-shrink-0 relative group">
+                             flex items-center justify-center flex-shrink-0">
                 {form.foto_url
                   ? <img src={form.foto_url} alt="preview" className="w-full h-full object-cover" />
                   : <span className="text-3xl opacity-30">📦</span>}

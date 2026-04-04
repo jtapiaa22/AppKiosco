@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useStock } from '@/hooks/useStock'
 import FilaProducto from '@/components/stock/FilaProducto'
 import ModalProducto from '@/components/stock/ModalProducto'
@@ -13,16 +13,30 @@ export default function Stock() {
     guardarProducto, eliminarProducto, ajustarStock,
   } = useStock()
 
+  // null = cerrado | {} = nuevo vacío | { ...producto } = editar
   const [modalProducto, setModalProducto]     = useState(null)
+  // código que viene del escáner — se pasa al ModalProducto por separado
+  const [codigoEscaneado, setCodigoEscaneado] = useState(null)
+
   const [modalAjuste, setModalAjuste]         = useState(null)
   const [confirmEliminar, setConfirmEliminar] = useState(null)
   const [modalEscaner, setModalEscaner]       = useState(false)
 
   const stocksBajos = productos.filter(p => p.stock_actual <= p.stock_minimo).length
 
+  // Cuando el escáner recibe un código:
+  // 1) Cerramos el modal escáner
+  // 2) Guardamos el código en su propio estado
+  // 3) Abrimos el modal de producto vacío
   function handleCodigoEscaneado(codigo) {
     setModalEscaner(false)
-    setModalProducto({ codigo_barras: codigo })
+    setCodigoEscaneado(codigo)
+    setModalProducto({})
+  }
+
+  function handleCerrarModalProducto() {
+    setModalProducto(null)
+    setCodigoEscaneado(null)
   }
 
   async function handleEliminar(id) {
@@ -48,7 +62,7 @@ export default function Stock() {
                        text-violet-300 hover:bg-violet-600/25 text-sm font-medium transition-all">
             📷 Escanear
           </button>
-          <button onClick={() => setModalProducto({})}
+          <button onClick={() => { setCodigoEscaneado(null); setModalProducto({}) }}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500
                        text-white text-sm font-medium transition-colors">
             <span className="text-base leading-none">+</span> Nuevo producto
@@ -90,7 +104,8 @@ export default function Stock() {
               {filtro ? 'Sin resultados' : 'No hay productos aún'}
             </p>
             {!filtro && (
-              <button onClick={() => setModalProducto({})} className="mt-3 text-sky-400 text-xs underline underline-offset-2">
+              <button onClick={() => { setCodigoEscaneado(null); setModalProducto({}) }}
+                className="mt-3 text-sky-400 text-xs underline underline-offset-2">
                 Crear el primero
               </button>
             )}
@@ -108,7 +123,7 @@ export default function Stock() {
             <tbody>
               {productos.map(p => (
                 <FilaProducto key={p.id} producto={p}
-                  onEditar={setModalProducto}
+                  onEditar={prod => { setCodigoEscaneado(null); setModalProducto(prod) }}
                   onAjustar={setModalAjuste}
                   onEliminar={setConfirmEliminar}
                 />
@@ -118,6 +133,7 @@ export default function Stock() {
         )}
       </div>
 
+      {/* Modal escáner QR */}
       {modalEscaner && (
         <ModalEscaner
           onCodigo={handleCodigoEscaneado}
@@ -125,12 +141,13 @@ export default function Stock() {
         />
       )}
 
+      {/* Modal nuevo/editar producto */}
       {modalProducto !== null && (
         <ModalProducto
           producto={modalProducto?.id ? modalProducto : null}
-          codigoEscaneado={!modalProducto?.id ? modalProducto?.codigo_barras : undefined}
+          codigoEscaneado={codigoEscaneado}
           onGuardar={guardarProducto}
-          onCerrar={() => setModalProducto(null)}
+          onCerrar={handleCerrarModalProducto}
         />
       )}
 
