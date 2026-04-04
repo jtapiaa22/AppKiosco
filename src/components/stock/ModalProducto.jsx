@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { lookupBarcode, lookupByName } from '@/services/barcode'
+import { lookupBarcode, lookupByName, sugerirCategoria } from '@/services/barcode'
 import BuscadorOFF from '@/components/stock/BuscadorOFF'
 import BuscadorImagenes from '@/components/stock/BuscadorImagenes'
 
@@ -36,10 +36,22 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
   const [mostrarBuscadorOFF, setMostrarBuscadorOFF] = useState(false)
   const [mostrarBuscadorImg, setMostrarBuscadorImg] = useState(false)
 
+  // Sugerencia de categoría basada en el nombre tipeado
+  const [sugerencia, setSugerencia] = useState('')
+
   useEffect(() => {
     if (codigoEscaneado) buscarPorCodigo(codigoEscaneado)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Cada vez que cambia el nombre, actualizar la sugerencia (solo si categoría está vacía)
+  useEffect(() => {
+    if (!form.categoria) {
+      setSugerencia(sugerirCategoria(form.nombre))
+    } else {
+      setSugerencia('')
+    }
+  }, [form.nombre, form.categoria])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -49,7 +61,7 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
     setInfoMsg('Buscando en base de datos...')
     setForm(f => ({ ...f, codigo_barras: codigo }))
 
-    let datos = await lookupBarcode(codigo)
+    const datos = await lookupBarcode(codigo)
 
     setBuscandoBarras(false)
     if (datos) {
@@ -206,7 +218,6 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
                     placeholder="https://..."
                     className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-xs
                                text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500" />
-                  {/* Siempre habilitado - BuscadorImagenes tiene su propio campo */}
                   <button
                     onClick={() => setMostrarBuscadorImg(true)}
                     title="Buscar imagen del producto"
@@ -234,10 +245,27 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1.5">Categoría</label>
-                <input value={form.categoria} onChange={e => set('categoria', e.target.value)}
+                <input
+                  value={form.categoria}
+                  onChange={e => set('categoria', e.target.value)}
                   placeholder="Ej: bebidas, snacks..."
                   className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm
-                             text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                             text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                {/* Chip de sugerencia — aparece solo cuando el campo está vacío y hay match por nombre */}
+                {sugerencia && (
+                  <button
+                    type="button"
+                    onClick={() => set('categoria', sugerencia)}
+                    className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg
+                               bg-violet-500/15 border border-violet-500/30 text-violet-300
+                               text-xs hover:bg-violet-500/25 transition-all group"
+                  >
+                    <span>✨</span>
+                    <span>Sugerida: <strong>{sugerencia}</strong></span>
+                    <span className="text-violet-500 group-hover:text-violet-300 transition-colors ml-0.5">→ aplicar</span>
+                  </button>
+                )}
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1.5">Descripción</label>
