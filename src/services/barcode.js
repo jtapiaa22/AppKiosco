@@ -1,10 +1,10 @@
 /**
- * barcode.js — Escáner físico + lookup de productos por código de barras
+ * barcode.js — Escaner fisico + lookup de productos por codigo o nombre
  */
 
-const OFF_API = 'https://world.openfoodfacts.org/api/v0/product'
+const OFF_API      = 'https://world.openfoodfacts.org/api/v0/product'
+const OFF_SEARCH   = 'https://world.openfoodfacts.org/cgi/search.pl'
 
-// ── Mapa de tags OFF → categoría corta en español ────────────────────────────────
 const CATEGORIA_MAP = {
   'beverages':                    'Bebidas',
   'drinks':                       'Bebidas',
@@ -12,7 +12,7 @@ const CATEGORIA_MAP = {
   'sodas':                        'Gaseosas',
   'colas':                        'Gaseosas',
   'non-alcoholic-beverages':      'Bebidas',
-  'alcoholic-beverages':          'Bebidas alcohólicas',
+  'alcoholic-beverages':          'Bebidas alcohólicas',
   'beers':                        'Cervezas',
   'wines':                        'Vinos',
   'spirits':                      'Licores',
@@ -21,14 +21,14 @@ const CATEGORIA_MAP = {
   'nectars':                      'Jugos',
   'waters':                       'Agua',
   'mineral-waters':               'Agua',
-  'energy-drinks':                'Energízantes',
-  'isotonic-drinks':              'Isotónicos',
+  'energy-drinks':                'Energízantes',
+  'isotonic-drinks':              'Isotónicos',
   'teas':                         'Infusiones',
-  'coffees':                      'Café',
+  'coffees':                      'Café',
   'hot-beverages':                'Infusiones',
-  'milks':                        'Lácteos',
+  'milks':                        'Lácteos',
   'plant-based-milks':            'Bebida vegetal',
-  'dairy-products':               'Lácteos',
+  'dairy-products':               'Lácteos',
   'cheeses':                      'Quesos',
   'yogurts':                      'Yogur',
   'butters':                      'Manteca',
@@ -60,7 +60,7 @@ const CATEGORIA_MAP = {
   'pastas':                       'Pastas',
   'rices':                        'Arroz',
   'flours':                       'Harinas',
-  'sugars':                       'Azúcar',
+  'sugars':                       'Azúcar',
   'salts':                        'Sal',
   'oils':                         'Aceites',
   'condiments':                   'Condimentos',
@@ -86,19 +86,15 @@ const CATEGORIA_MAP = {
   'household-products':           'Limpieza',
   'personal-care':                'Higiene',
   'hygiene-products':             'Higiene',
-  'cosmetics':                    'Cosmética',
+  'cosmetics':                    'Cosmética',
   'dietary-supplements':          'Suplementos',
-  'baby-foods':                   'Bebés',
+  'baby-foods':                   'Bebés',
   'pet-foods':                    'Mascotas',
   'tobaccos':                     'Tabaco',
   'plant-based-foods':            'Vegano',
-  'organic-foods':                'Orgánico',
+  'organic-foods':                'Orgánico',
 }
 
-/**
- * Exportada también como `resolverCategoriaPublic` para que BuscadorOFF la use
- * sin duplicar la lógica.
- */
 export function resolverCategoriaPublic(tags = []) {
   if (!tags || tags.length === 0) return ''
   const normalized = tags.map(t => t.replace(/^[a-z]{2}:/, '').toLowerCase().trim())
@@ -109,10 +105,9 @@ export function resolverCategoriaPublic(tags = []) {
   return raw.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).split(' ').slice(0, 2).join(' ')
 }
 
-// Alias interno
 const resolverCategoria = resolverCategoriaPublic
 
-// ── Escáner físico ────────────────────────────────────────────────────────
+// ── Escaner fisico ───────────────────────────────────────────────────────
 export function listenBarcodeScanner(callback) {
   let buffer = ''
   let lastKeyTime = 0
@@ -141,7 +136,7 @@ export function listenBarcodeScanner(callback) {
   return () => window.removeEventListener('keydown', onKeyDown, true)
 }
 
-// ── Lookup por código de barras ───────────────────────────────────────────
+// ── Lookup por codigo de barras (OFF) ─────────────────────────────────
 export async function lookupBarcode(codigo) {
   try {
     const res = await fetch(`${OFF_API}/${codigo}.json`)
@@ -155,13 +150,40 @@ export async function lookupBarcode(codigo) {
       descripcion:   p.generic_name || '',
       foto_url:      p.image_front_small_url || p.image_url || '',
       categoria:     resolverCategoria(p.categories_tags),
-      precio_costo:  0,
-      precio_venta:  0,
-      stock_actual:  0,
-      stock_minimo:  5,
     }
   } catch (err) {
-    console.warn('[Barcode] Open Food Facts no disponible:', err.message)
+    console.warn('[Barcode] OFF no disponible:', err.message)
+    return null
+  }
+}
+
+// ── Lookup por nombre (OFF search) ──────────────────────────────────
+export async function lookupByName(nombre) {
+  try {
+    const params = new URLSearchParams({
+      search_terms:    nombre,
+      search_simple:   '1',
+      action:          'process',
+      json:            '1',
+      page_size:       '5',
+      fields:          'product_name,product_name_es,generic_name,image_front_small_url,image_url,categories_tags,code',
+    })
+    const res = await fetch(`${OFF_SEARCH}?${params}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    const productos = data.products || []
+    if (productos.length === 0) return null
+    // Tomar el primero con nombre
+    const p = productos.find(x => x.product_name || x.product_name_es) || productos[0]
+    return {
+      codigo_barras: p.code || '',
+      nombre:        p.product_name || p.product_name_es || nombre,
+      descripcion:   p.generic_name || '',
+      foto_url:      p.image_front_small_url || p.image_url || '',
+      categoria:     resolverCategoria(p.categories_tags),
+    }
+  } catch (err) {
+    console.warn('[Barcode] OFF search no disponible:', err.message)
     return null
   }
 }
