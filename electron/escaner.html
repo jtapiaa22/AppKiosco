@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Escáner — KioscoApp</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0f172a;
+      --surface:  #1e293b;
+      --border:   #334155;
+      --text:     #f1f5f9;
+      --muted:    #94a3b8;
+      --primary:  #0ea5e9;
+      --success:  #22c55e;
+      --error:    #ef4444;
+      --warn:     #f59e0b;
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+    #app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 0 0 env(safe-area-inset-bottom);
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .header-logo { font-size: 22px; }
+    .header h1 { font-size: 17px; font-weight: 700; }
+    .header p  { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+    /* Secciones / tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab {
+      flex: 1;
+      padding: 12px 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+    }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* Scroll principal */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Video / cámara */
+    .camera-wrap {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+      aspect-ratio: 4/3;
+    }
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .scan-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .scan-box {
+      width: 65%;
+      aspect-ratio: 3/1;
+      border: 2px solid var(--primary);
+      border-radius: 8px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+    }
+    .scan-line {
+      position: absolute;
+      left: 17.5%;
+      width: 65%;
+      height: 2px;
+      background: var(--primary);
+      opacity: 0.8;
+      animation: scanMove 2s ease-in-out infinite;
+    }
+    @keyframes scanMove {
+      0%, 100% { top: 33%; }
+      50%       { top: 55%; }
+    }
+    .camera-status {
+      position: absolute;
+      bottom: 10px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+    }
+
+    /* Canvas oculto para captura de foto */
+    #canvas { display: none; }
+
+    /* Botones */
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { opacity: 0.75; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-primary  { background: var(--primary); color: #fff; }
+    .btn-success  { background: var(--success); color: #fff; }
+    .btn-outline  { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
+    .btn-sm {
+      padding: 8px 14px;
+      font-size: 13px;
+      width: auto;
+      border-radius: 8px;
+    }
+
+    /* Inputs */
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+    input[type="number"] { font-family: ui-monospace, monospace; }
+    .input-prefix {
+      position: relative;
+    }
+    .input-prefix span {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 15px;
+      pointer-events: none;
+    }
+    .input-prefix input { padding-left: 26px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Foto preview */
+    .foto-wrap {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    #fotoPreview {
+      width: 80px;
+      height: 80px;
+      border-radius: 12px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      object-fit: cover;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      overflow: hidden;
+    }
+    #fotoPreview img {
+      width: 100%; height: 100%; object-fit: cover; border-radius: 10px;
+    }
+
+    /* Margen */
+    .margen {
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      margin-top: 6px;
+    }
+    .margen.ok   { color: var(--success); }
+    .margen.warn { color: var(--warn); }
+    .margen.bad  { color: var(--error); }
+
+    /* Toast / estado */
+    .toast {
+      position: fixed;
+      bottom: calc(24px + env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 999;
+      display: none;
+    }
+    .toast.show { display: block; }
+    .toast.ok   { border-color: var(--success); color: var(--success); }
+    .toast.err  { border-color: var(--error);   color: var(--error);   }
+
+    /* Secciones del formulario */
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .found-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(34,197,94,0.15);
+      border: 1px solid rgba(34,197,94,0.3);
+      color: var(--success);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div class="header">
+    <div class="header-logo">🏪</div>
+    <div>
+      <h1>KioscoApp — Escáner</h1>
+      <p>Agreá productos desde el celular</p>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setTab('scan')">📷 Escanear</button>
+    <button class="tab" onclick="setTab('manual')">✏️ Manual</button>
+  </div>
+
+  <!-- TAB: ESCANEAR -->
+  <div id="tab-scan" class="content">
+
+    <div class="camera-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="scan-overlay">
+        <div class="scan-box"></div>
+        <div class="scan-line"></div>
+      </div>
+      <div class="camera-status" id="camStatus">Iniciando cámara...</div>
+    </div>
+
+    <div id="scanResult" style="display:none">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px">
+        <span class="found-badge">✓ Código detectado</span>
+        <button class="btn btn-outline btn-sm" onclick="resetScan()">Nueva scan</button>
+      </div>
+      <p style="font-family:monospace; color:var(--primary); font-size:14px; margin-bottom:4px" id="codigoDetectado"></p>
+      <p style="font-size:12px; color:var(--muted)" id="offStatus"></p>
+    </div>
+
+    <!-- Foto del producto -->
+    <div id="fotoSection" style="display:none">
+      <p class="section-title" style="margin-bottom:12px">Foto del producto</p>
+      <div class="foto-wrap">
+        <div id="fotoPreview">📦</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:8px">
+          <button class="btn btn-outline btn-sm" onclick="tomarFoto()">📸 Sacar foto ahora</button>
+          <p style="font-size:11px; color:var(--muted)">O pegá una URL abajo</p>
+          <input id="fotoUrl" type="url" placeholder="https://..." oninput="actualizarFoto()" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Formulario autollenado -->
+    <div id="formSection" style="display:none">
+      <p class="section-title" style="margin-bottom:12px">Datos del producto</p>
+
+      <div style="display:flex; flex-direction:column; gap:14px">
+        <div>
+          <label>Nombre *</label>
+          <input id="nombre" type="text" placeholder="Nombre del producto" />
+        </div>
+        <div class="row">
+          <div>
+            <label>Categoría</label>
+            <input id="categoria" type="text" placeholder="Ej: bebidas" />
+          </div>
+          <div>
+            <label>Stock actual</label>
+            <input id="stockActual" type="number" value="0" min="0" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Precio costo</label>
+            <div class="input-prefix">
+              <span>$</span>
+              <input id="precioCosto" type="number" value="0" min="0" oninput="calcMargen()" />
+            </div>
+          </div>
+          <div>
+            <label>Precio venta *</label>
+            <div class="input-prefix">
+              <span>$</span>
+              <input id="precioVenta" type="number" value="0" min="0" oninput="calcMargen()" />
+            </div>
+          </div>
+        </div>
+        <p id="margenIndicador" class="margen" style="display:none"></p>
+
+        <button class="btn btn-success" id="btnGuardar" onclick="guardarProducto()">
+          ✓ Guardar en KioscoApp
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB: MANUAL -->
+  <div id="tab-manual" class="content" style="display:none">
+    <div style="display:flex; flex-direction:column; gap:14px">
+      <div>
+        <label>Código de barras</label>
+        <div style="display:flex; gap:8px">
+          <input id="codigoManual" type="text" placeholder="Ej: 7790895000083" style="flex:1" />
+          <button class="btn btn-outline btn-sm" onclick="buscarManual()" id="btnBuscar">Buscar</button>
+        </div>
+      </div>
+      <div class="foto-wrap">
+        <div id="fotoPreviewManual">📦</div>
+        <div style="flex:1">
+          <label>URL de foto</label>
+          <input id="fotoUrlManual" type="url" placeholder="https://..." oninput="actualizarFotoManual()" />
+        </div>
+      </div>
+      <div>
+        <label>Nombre *</label>
+        <input id="nombreManual" type="text" placeholder="Nombre del producto" />
+      </div>
+      <div class="row">
+        <div>
+          <label>Categoría</label>
+          <input id="categoriaManual" type="text" placeholder="Ej: snacks" />
+        </div>
+        <div>
+          <label>Stock actual</label>
+          <input id="stockActualManual" type="number" value="0" min="0" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Precio costo</label>
+          <div class="input-prefix">
+            <span>$</span>
+            <input id="precioCostoManual" type="number" value="0" min="0" oninput="calcMargenManual()" />
+          </div>
+        </div>
+        <div>
+          <label>Precio venta *</label>
+          <div class="input-prefix">
+            <span>$</span>
+            <input id="precioVentaManual" type="number" value="0" min="0" oninput="calcMargenManual()" />
+          </div>
+        </div>
+      </div>
+      <p id="margenManual" class="margen" style="display:none"></p>
+      <button class="btn btn-success" onclick="guardarManual()">&#10003; Guardar en KioscoApp</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ZXing para leer barcodes desde cámara -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+
+<script>
+// ========== CONFIG ==========
+// La URL base del servidor: mismo origen que sirvió esta página
+const API = window.location.origin
+
+// ========== TABS ==========
+function setTab(tab) {
+  document.getElementById('tab-scan').style.display   = tab === 'scan'   ? 'flex' : 'none'
+  document.getElementById('tab-manual').style.display = tab === 'manual' ? 'flex' : 'none'
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    el.classList.toggle('active', (i === 0 && tab === 'scan') || (i === 1 && tab === 'manual'))
+  })
+}
+
+// ========== TOAST ==========
+let toastTimer
+function showToast(msg, type = 'ok') {
+  const el = document.getElementById('toast')
+  el.textContent = msg
+  el.className = `toast show ${type}`
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000)
+}
+
+// ========== CÁMARA / SCAN ==========
+let codeReader = null
+let scanActive = false
+let codigoEscaneado = ''
+let streamActivo = null
+
+async function iniciarCamara() {
+  const statusEl = document.getElementById('camStatus')
+  try {
+    // Pedir permiso de cámara
+    streamActivo = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    })
+    const video = document.getElementById('video')
+    video.srcObject = streamActivo
+    await video.play()
+    statusEl.textContent = 'Apuntá al código de barras'
+
+    // Iniciar lector de códigos
+    if (typeof ZXing !== 'undefined') {
+      codeReader = new ZXing.BrowserMultiFormatReader()
+      codeReader.decodeFromVideoElement(video, (result, err) => {
+        if (result && !scanActive) {
+          scanActive = true
+          onCodigoDetectado(result.getText())
+        }
+      })
+    } else {
+      statusEl.textContent = '⚠️ ZXing no cargó — recargá la página'
+    }
+  } catch (e) {
+    statusEl.textContent = '❌ Sin acceso a la cámara — permití el acceso'
+    console.error(e)
+  }
+}
+
+async function onCodigoDetectado(codigo) {
+  codigoEscaneado = codigo
+  document.getElementById('codigoDetectado').textContent = codigo
+  document.getElementById('scanResult').style.display = 'block'
+  document.getElementById('fotoSection').style.display = 'block'
+  document.getElementById('formSection').style.display = 'block'
+
+  // Detener scan visual
+  const statusEl = document.getElementById('camStatus')
+  statusEl.textContent = '✓ Código capturado'
+
+  // Buscar en Open Food Facts
+  const offStatusEl = document.getElementById('offStatus')
+  offStatusEl.textContent = 'Buscando datos en Open Food Facts...'
+
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${codigo}.json`)
+    const data = await res.json()
+    if (data.status === 1 && data.product) {
+      const p = data.product
+      document.getElementById('nombre').value    = p.product_name || p.product_name_es || ''
+      document.getElementById('categoria').value = resolverCategoria(p.categories_tags)
+      document.getElementById('fotoUrl').value   = p.image_front_small_url || p.image_url || ''
+      actualizarFoto()
+      offStatusEl.textContent = '✓ Datos autocompletos desde Open Food Facts'
+    } else {
+      offStatusEl.textContent = 'No encontrado en Open Food Facts — completá los datos'
+    }
+  } catch (e) {
+    offStatusEl.textContent = 'Sin conexión a Open Food Facts'
+  }
+}
+
+function resetScan() {
+  scanActive = false
+  codigoEscaneado = ''
+  document.getElementById('scanResult').style.display = 'none'
+  document.getElementById('fotoSection').style.display = 'none'
+  document.getElementById('formSection').style.display = 'none'
+  document.getElementById('nombre').value = ''
+  document.getElementById('categoria').value = ''
+  document.getElementById('stockActual').value = '0'
+  document.getElementById('precioCosto').value = '0'
+  document.getElementById('precioVenta').value = '0'
+  document.getElementById('fotoUrl').value = ''
+  document.getElementById('fotoPreview').innerHTML = '📦'
+  document.getElementById('camStatus').textContent = 'Apuntá al código de barras'
+}
+
+// ========== FOTO ==========
+function actualizarFoto() {
+  const url = document.getElementById('fotoUrl').value.trim()
+  const wrap = document.getElementById('fotoPreview')
+  wrap.innerHTML = url ? `<img src="${url}" alt="foto" />` : '📦'
+}
+
+function actualizarFotoManual() {
+  const url = document.getElementById('fotoUrlManual').value.trim()
+  const wrap = document.getElementById('fotoPreviewManual')
+  wrap.innerHTML = url ? `<img src="${url}" alt="foto" />` : '📦'
+}
+
+function tomarFoto() {
+  const video  = document.getElementById('video')
+  const canvas = document.getElementById('canvas')
+  canvas.width  = video.videoWidth
+  canvas.height = video.videoHeight
+  canvas.getContext('2d').drawImage(video, 0, 0)
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+  // Guardamos como URL de datos — la mostramos en el preview
+  // (no se sube a ningún server, queda en el campo foto_url como base64)
+  document.getElementById('fotoUrl').value = dataUrl
+  document.getElementById('fotoPreview').innerHTML = `<img src="${dataUrl}" alt="foto" />`
+  showToast('📸 Foto capturada')
+}
+
+// ========== MARGEN ==========
+function calcMargen() {
+  const costo = parseFloat(document.getElementById('precioCosto').value) || 0
+  const venta = parseFloat(document.getElementById('precioVenta').value) || 0
+  mostrarMargen('margenIndicador', costo, venta)
+}
+function calcMargenManual() {
+  const costo = parseFloat(document.getElementById('precioCostoManual').value) || 0
+  const venta = parseFloat(document.getElementById('precioVentaManual').value) || 0
+  mostrarMargen('margenManual', costo, venta)
+}
+function mostrarMargen(id, costo, venta) {
+  const el = document.getElementById(id)
+  if (!costo || !venta) { el.style.display = 'none'; return }
+  const m = Math.round(((venta - costo) / costo) * 100)
+  el.style.display = 'block'
+  el.className = `margen ${m >= 30 ? 'ok' : m >= 10 ? 'warn' : 'bad'}`
+  el.textContent = `Margen: ${m}% — ${m >= 30 ? 'bueno' : m >= 10 ? 'ajustado' : 'bajo'}`
+}
+
+// ========== GUARDAR (scan) ==========
+async function guardarProducto() {
+  const nombre = document.getElementById('nombre').value.trim()
+  if (!nombre) { showToast('⚠️ El nombre es obligatorio', 'err'); return }
+  const precioVenta = parseFloat(document.getElementById('precioVenta').value)
+  if (!precioVenta) { showToast('⚠️ El precio de venta es obligatorio', 'err'); return }
+
+  const btn = document.getElementById('btnGuardar')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span> Guardando...'
+
+  const body = {
+    codigo_barras: codigoEscaneado,
+    nombre,
+    categoria:     document.getElementById('categoria').value.trim(),
+    foto_url:      document.getElementById('fotoUrl').value.trim(),
+    precio_costo:  parseFloat(document.getElementById('precioCosto').value) || 0,
+    precio_venta:  precioVenta,
+    stock_actual:  parseInt(document.getElementById('stockActual').value) || 0,
+    stock_minimo:  5,
+  }
+
+  try {
+    const res = await fetch(`${API}/api/productos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Error al guardar')
+    showToast('✅ Producto guardado exitosamente')
+    setTimeout(resetScan, 1500)
+  } catch (e) {
+    showToast(`❌ ${e.message}`, 'err')
+  } finally {
+    btn.disabled = false
+    btn.innerHTML = '&#10003; Guardar en KioscoApp'
+  }
+}
+
+// ========== GUARDAR (manual) ==========
+async function buscarManual() {
+  const codigo = document.getElementById('codigoManual').value.trim()
+  if (!codigo) return
+  const btn = document.getElementById('btnBuscar')
+  btn.textContent = '...'
+  btn.disabled = true
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${codigo}.json`)
+    const data = await res.json()
+    if (data.status === 1 && data.product) {
+      const p = data.product
+      document.getElementById('nombreManual').value    = p.product_name || ''
+      document.getElementById('categoriaManual').value = resolverCategoria(p.categories_tags)
+      document.getElementById('fotoUrlManual').value   = p.image_front_small_url || ''
+      actualizarFotoManual()
+      showToast('✓ Datos encontrados en Open Food Facts')
+    } else {
+      showToast('No encontrado en Open Food Facts', 'err')
+    }
+  } catch (e) {
+    showToast('Sin conexión a Open Food Facts', 'err')
+  } finally {
+    btn.textContent = 'Buscar'
+    btn.disabled = false
+  }
+}
+
+async function guardarManual() {
+  const nombre = document.getElementById('nombreManual').value.trim()
+  if (!nombre) { showToast('⚠️ El nombre es obligatorio', 'err'); return }
+  const precioVenta = parseFloat(document.getElementById('precioVentaManual').value)
+  if (!precioVenta) { showToast('⚠️ El precio de venta es obligatorio', 'err'); return }
+
+  const body = {
+    codigo_barras: document.getElementById('codigoManual').value.trim(),
+    nombre,
+    categoria:     document.getElementById('categoriaManual').value.trim(),
+    foto_url:      document.getElementById('fotoUrlManual').value.trim(),
+    precio_costo:  parseFloat(document.getElementById('precioCostoManual').value) || 0,
+    precio_venta:  precioVenta,
+    stock_actual:  parseInt(document.getElementById('stockActualManual').value) || 0,
+    stock_minimo:  5,
+  }
+
+  try {
+    const res = await fetch(`${API}/api/productos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Error al guardar')
+    showToast('✅ Producto guardado exitosamente')
+  } catch (e) {
+    showToast(`❌ ${e.message}`, 'err')
+  }
+}
+
+// ========== CATEGORÍAS OFF ==========
+const CAT_MAP = {
+  'beverages':'Bebidas','drinks':'Bebidas','carbonated-drinks':'Gaseosas','sodas':'Gaseosas',
+  'colas':'Gaseosas','non-alcoholic-beverages':'Bebidas','alcoholic-beverages':'Beb. alcohólicas',
+  'beers':'Cervezas','wines':'Vinos','spirits':'Licores','juices':'Jugos','fruit-juices':'Jugos',
+  'waters':'Agua','mineral-waters':'Agua','energy-drinks':'Energízantes','teas':'Infusiones',
+  'coffees':'Café','milks':'Lácteos','dairy-products':'Lácteos','cheeses':'Quesos',
+  'yogurts':'Yogur','ice-creams':'Helados','snacks':'Snacks','salty-snacks':'Snacks',
+  'chips':'Papas fritas','crackers':'Galletas','biscuits':'Galletas','cookies':'Galletas',
+  'chocolates':'Chocolates','candies':'Caramelos','sweets':'Golosinas','gummies':'Gomitas',
+  'chewing-gums':'Chicles','breads':'Pan','cereals':'Cereales','breakfast-cereals':'Cereales',
+  'cereal-bars':'Barras cereal','pastas':'Pastas','rices':'Arroz','flours':'Harinas',
+  'sugars':'Azúcar','salts':'Sal','oils':'Aceites','sauces':'Salsas','ketchups':'Ketchup',
+  'mayonnaises':'Mayonesa','cleaning-products':'Limpieza','personal-care':'Higiene',
+}
+function resolverCategoria(tags = []) {
+  if (!tags || !tags.length) return ''
+  for (const t of tags.map(t => t.replace(/^[a-z]{2}:/, '').toLowerCase())) {
+    if (CAT_MAP[t]) return CAT_MAP[t]
+  }
+  return (tags[0] || '').replace(/^[a-z]{2}:/, '').replace(/-/g, ' ')
+}
+
+// ========== INIT ==========
+iniciarCamara()
+</script>
+</body>
+</html>
