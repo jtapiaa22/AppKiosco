@@ -3,6 +3,7 @@ const path = require('path')
 const fs   = require('fs')
 const { getDB }                              = require('./database')
 const { validateLicense, activateLicense, getMachineId } = require('./license')
+const { startApiServer, getLocalIP }        = require('./api-server')
 
 /**
  * Detección de modo desarrollo:
@@ -57,5 +58,20 @@ ipcMain.handle('license:getMachineId', ()       => getMachineId())
 // IPC: app
 ipcMain.handle('app:version', () => app.getVersion())
 
-app.whenReady().then(createWindow)
+// IPC: info del servidor móvil (para mostrar la IP en la UI si se quiere)
+ipcMain.handle('api:getUrl', () => {
+  const ip = getLocalIP()
+  return `http://${ip}:3001/escaner`
+})
+
+app.whenReady().then(() => {
+  // Inicializar la DB primero (para que el servidor ya la tenga lista)
+  getDB()
+
+  // Levantar el servidor móvil
+  startApiServer(getDB)
+
+  createWindow()
+})
+
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
