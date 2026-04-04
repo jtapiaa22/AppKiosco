@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // DB
+  // Base de datos
   dbQuery: (sql, params)  => ipcRenderer.invoke('db:query', sql, params),
   dbRun:   (sql, params)  => ipcRenderer.invoke('db:run',   sql, params),
 
@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App
   getVersion: () => ipcRenderer.invoke('app:version'),
 
-  // Servidor móvil
-  getApiUrl:       () => ipcRenderer.invoke('api:getUrl'),
-  getNgrokStatus:  () => ipcRenderer.invoke('api:getNgrokStatus'),
+  // Servidor móvil (ngrok o LAN)
+  getApiUrl:      () => ipcRenderer.invoke('api:getUrl'),
+  getNgrokStatus: () => ipcRenderer.invoke('api:getNgrokStatus'),
 })

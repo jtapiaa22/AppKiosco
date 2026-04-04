@@ -1,7 +1,7 @@
 /**
  * ngrok-tunnel.js
  * Levanta un túnel ngrok sobre el puerto 3001 y devuelve la URL pública HTTPS.
- * Si ngrok no está instalado o falla, devuelve null (modo degradado).
+ * Electron NO hereda el PATH del shell, por eso buscamos rutas absolutas.
  */
 
 const { exec, execSync } = require('child_process')
@@ -12,78 +12,74 @@ const path               = require('path')
 let tunnelUrl = null
 let ngrokProc = null
 
-// Rutas donde puede estar ngrok en Linux/Mac
-// Electron no hereda el PATH completo del shell, hay que buscar manualmente
+// Rutas absolutas donde puede estar ngrok en Linux/Mac
 const NGROK_CANDIDATES = [
   '/usr/local/bin/ngrok',
   '/usr/bin/ngrok',
   '/snap/bin/ngrok',
-  '/opt/homebrew/bin/ngrok',   // macOS ARM
+  '/opt/homebrew/bin/ngrok',
   '/home/linuxbrew/.linuxbrew/bin/ngrok',
   path.join(process.env.HOME || '', '.local/bin/ngrok'),
   path.join(process.env.HOME || '', 'bin/ngrok'),
 ]
 
-/**
- * Encuentra la ruta absoluta de ngrok, o null si no está instalado.
- */
 function findNgrok() {
-  // 1. Buscar en rutas conocidas
+  // 1. Buscar en rutas conocidas directamente
   for (const candidate of NGROK_CANDIDATES) {
-    if (fs.existsSync(candidate)) {
-      console.log('[ngrok] Encontrado en:', candidate)
-      return candidate
-    }
+    try {
+      if (fs.existsSync(candidate)) {
+        console.log('[ngrok] Encontrado en:', candidate)
+        return candidate
+      }
+    } catch { /* ignorar */ }
   }
 
-  // 2. Intentar con el PATH que sí tiene Electron
+  // 2. Intentar `which` con PATH enriquecido manualmente
   try {
-    const result = execSync('which ngrok 2>/dev/null || command -v ngrok 2>/dev/null', {
+    const result = execSync('which ngrok || command -v ngrok', {
       encoding: 'utf8',
+      shell: '/bin/bash',
       env: {
         ...process.env,
-        PATH: `${process.env.PATH}:/usr/local/bin:/usr/bin:/snap/bin:/opt/homebrew/bin`,
+        PATH: [
+          process.env.PATH,
+          '/usr/local/bin',
+          '/usr/bin',
+          '/snap/bin',
+          '/opt/homebrew/bin',
+        ].filter(Boolean).join(':'),
       },
     }).trim()
     if (result && fs.existsSync(result)) {
       console.log('[ngrok] Encontrado via which:', result)
       return result
     }
-  } catch {
-    // nada
-  }
+  } catch { /* ngrok no está en PATH */ }
 
   return null
 }
 
-/**
- * Intenta iniciar ngrok y obtener la URL pública HTTPS.
- * Retorna la URL (string) o null si falla.
- */
 function startNgrok(port = 3001) {
   return new Promise((resolve) => {
     const ngrokBin = findNgrok()
 
     if (!ngrokBin) {
-      console.warn('[ngrok] No encontrado en rutas conocidas — modo degradado (solo LAN)')
+      console.warn('[ngrok] No encontrado — modo degradado (solo LAN)')
       return resolve(null)
     }
 
     console.log('[ngrok] Iniciando túnel en puerto', port, 'con', ngrokBin)
 
-    // PATH enriquecido para que ngrok pueda ejecutarse correctamente
     const env = {
       ...process.env,
-      PATH: `${process.env.PATH}:/usr/local/bin:/usr/bin:/snap/bin`,
+      PATH: [process.env.PATH, '/usr/local/bin', '/usr/bin', '/snap/bin'].filter(Boolean).join(':'),
     }
 
     ngrokProc = exec(`"${ngrokBin}" http ${port} --log=stdout --log-format=json`, { env })
-
     ngrokProc.stderr?.on('data', d => console.error('[ngrok stderr]', d.toString().trim()))
 
-    // Consultar la API local de ngrok cada 500ms hasta obtener la URL (máx 12s)
-    let attempts    = 0
-    const maxAttempts = 24
+    let attempts = 0
+    const maxAttempts = 24  // 12 segundos
 
     const poll = setInterval(() => {
       attempts++
@@ -107,12 +103,9 @@ function startNgrok(port = 3001) {
               console.log('[ngrok] Túnel activo:', tunnelUrl)
               resolve(tunnelUrl)
             }
-          } catch {
-            // API todavía no responde JSON válido, seguir esperando
-          }
+          } catch { /* API todavía no lista */ }
         })
       })
-
       req.on('error', () => {})
       req.setTimeout(400, () => req.destroy())
     }, 500)
@@ -127,8 +120,6 @@ function stopNgrok() {
   tunnelUrl = null
 }
 
-function getTunnelUrl() {
-  return tunnelUrl
-}
+function getTunnelUrl() { return tunnelUrl }
 
 module.exports = { startNgrok, stopNgrok, getTunnelUrl, findNgrok }
