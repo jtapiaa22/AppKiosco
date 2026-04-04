@@ -1,7 +1,7 @@
 import { usePosStore } from '@/store/posStore'
 
 export default function Carrito() {
-  const { carrito, cambiarCantidad, quitarItem, getTotal } = usePosStore()
+  const { carrito, cambiarCantidad, eliminarItem, getTotal } = usePosStore()
 
   if (carrito.length === 0) {
     return (
@@ -41,7 +41,7 @@ export default function Carrito() {
             {/* Control de cantidad */}
             <div className="flex items-center gap-1 flex-shrink-0">
               <button
-                onClick={() => cambiarCantidad(item.id, item.cantidad - 1)}
+                onClick={() => cambiarCantidad(item.id, -1)}
                 className="w-7 h-7 rounded-lg bg-gray-700 hover:bg-gray-600 text-white
                            flex items-center justify-center text-sm font-bold transition-colors"
               >−</button>
@@ -49,7 +49,7 @@ export default function Carrito() {
                 {item.cantidad}
               </span>
               <button
-                onClick={() => cambiarCantidad(item.id, item.cantidad + 1)}
+                onClick={() => cambiarCantidad(item.id, +1)}
                 className="w-7 h-7 rounded-lg bg-gray-700 hover:bg-gray-600 text-white
                            flex items-center justify-center text-sm font-bold transition-colors"
               >+</button>
@@ -64,7 +64,7 @@ export default function Carrito() {
 
             {/* Quitar */}
             <button
-              onClick={() => quitarItem(item.id)}
+              onClick={() => eliminarItem(item.id)}
               className="w-6 h-6 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/10
                          flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
             >✕</button>

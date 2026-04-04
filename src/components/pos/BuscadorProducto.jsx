@@ -5,24 +5,23 @@ import { usePosStore } from '@/store/posStore'
 
 export default function BuscadorProducto({ onProductoNuevo }) {
   const [texto, setTexto] = useState('')
-  const [modoEscaneo, setModoEscaneo] = useState(false)
   const [flash, setFlash] = useState(false)
   const inputRef = useRef(null)
   const { resultados, cargando, buscarPorTexto, buscarPorCodigo, limpiar } = useProductoSearch()
-  const { agregarItem } = usePosStore()
+  const { agregarProducto } = usePosStore()
 
   // Escuchar escáner físico globalmente
   useEffect(() => {
     const cleanup = listenBarcodeScanner(async (codigo) => {
       setFlash(true)
       setTimeout(() => setFlash(false), 300)
-      const { producto, fuente, nuevo } = await buscarPorCodigo(codigo)
+      const { producto, nuevo } = await buscarPorCodigo(codigo)
       if (producto && !nuevo) {
-        agregarItem(producto)
+        agregarProducto(producto)
         setTexto('')
         limpiar()
       } else if (nuevo && onProductoNuevo) {
-        onProductoNuevo(producto) // Abrir modal para completar precio
+        onProductoNuevo(producto)
       }
     })
     return cleanup
@@ -35,7 +34,7 @@ export default function BuscadorProducto({ onProductoNuevo }) {
   }, [texto])
 
   const seleccionar = (producto) => {
-    agregarItem(producto)
+    agregarProducto(producto)
     setTexto('')
     limpiar()
     inputRef.current?.focus()
@@ -72,7 +71,7 @@ export default function BuscadorProducto({ onProductoNuevo }) {
       {/* Indicador modo escáner */}
       <div className="flex items-center gap-2 mt-3 mb-4">
         <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="text-xs text-gray-500 font-mono">escáner activo — apuntá y scaneá</span>
+        <span className="text-xs text-gray-500 font-mono">escáner activo — apuntá y saneá</span>
       </div>
 
       {/* Resultados */}
@@ -116,15 +115,16 @@ export default function BuscadorProducto({ onProductoNuevo }) {
         </div>
       )}
 
-      {/* Estado vacío */}
+      {/* Estado vacío — con texto pero sin resultados */}
       {texto.length >= 2 && resultados.length === 0 && !cargando && (
         <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
           <div className="text-4xl mb-3">🔍</div>
           <p className="text-gray-400 text-sm">Sin resultados para <span className="text-white font-mono">"{texto}"</span></p>
-          <p className="text-gray-600 text-xs mt-1">¿Es un producto nuevo? Agregalo desde Stock.</p>
+          <p className="text-gray-600 text-xs mt-1">¿Es un producto nuevo? Agreálo desde Stock.</p>
         </div>
       )}
 
+      {/* Estado inicial */}
       {texto.length === 0 && resultados.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center text-center py-12 opacity-40">
           <div className="text-5xl mb-4">▋</div>
