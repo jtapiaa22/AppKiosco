@@ -22,16 +22,14 @@
     .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
     .content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 
-    #reader { position: relative; width: 100%; border-radius: 16px; overflow: hidden; background: #000; min-height: 260px; }
-    #reader video  { width: 100% !important; height: auto !important; display: block; border-radius: 16px; }
-    #reader canvas.drawingBuffer { display: none; }
+    /* html5-qrcode renderiza dentro de #reader */
+    #reader { width: 100%; border-radius: 16px; overflow: hidden; background: #000; }
+    /* Forzar estilos del scanner */
+    #reader > div { border-radius: 16px !important; }
+    #reader video { border-radius: 16px !important; }
+    #reader img { display: none !important; } /* ocultar logo */
 
-    .aim-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
-    .aim-box { width: 75%; height: 70px; border: 2px solid rgba(14,165,233,0.9); border-radius: 8px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.4); }
-    .aim-line { position: absolute; width: 75%; height: 2px; background: rgba(14,165,233,0.6); animation: scan 2s ease-in-out infinite; }
-    @keyframes scan { 0%,100%{top:35%} 50%{top:60%} }
-
-    .camera-status { text-align: center; font-size: 13px; color: var(--muted); padding: 8px 0; min-height: 24px; }
+    .camera-status { text-align: center; font-size: 13px; color: var(--muted); padding: 6px 0; min-height: 22px; }
     .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.15s; -webkit-tap-highlight-color: transparent; }
     .btn:active { opacity: 0.75; } .btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .btn-primary { background: var(--primary); color: #fff; }
@@ -58,7 +56,6 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
     .pc-mode-banner { background: rgba(14,165,233,0.12); border: 1px solid rgba(14,165,233,0.3); border-radius: 12px; padding: 12px 16px; font-size: 13px; color: var(--primary); text-align: center; line-height: 1.5; }
-    .debug-bar { font-size: 11px; color: var(--muted); font-family: monospace; text-align: center; padding: 4px 0; min-height: 18px; }
   </style>
 </head>
 <body>
@@ -83,14 +80,9 @@
       <strong>Apuntá al código de barras</strong> y se enviará automáticamente.
     </div>
 
-    <div id="reader">
-      <div class="aim-overlay">
-        <div class="aim-box"></div>
-        <div class="aim-line"></div>
-      </div>
-    </div>
+    <!-- html5-qrcode renderiza el video acá -->
+    <div id="reader"></div>
     <p class="camera-status" id="camStatus">Iniciando cámara...</p>
-    <p class="debug-bar" id="debugBar"></p>
 
     <div id="scanResult" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -170,7 +162,8 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.4.1/dist/quagga.min.js"></script>
+<!-- html5-qrcode: reemplazo de Quagga2, sin el bug Pt[e] is not a constructor -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <script>
 const API = window.location.origin
@@ -178,11 +171,9 @@ const urlParams = new URLSearchParams(window.location.search)
 let pcMode = urlParams.get('mode') === 'pc'
 let scanActive = false
 let codigoEscaneado = ''
+let html5QrScanner = null
 
-// Mapa de frecuencia para confirmar lecturas
-const freqMap = {}
-
-// ── Tabs ──────────────────────────────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────────────
 function setTab(tab) {
   document.getElementById('tab-scan').style.display   = tab === 'scan'   ? 'flex' : 'none'
   document.getElementById('tab-manual').style.display = tab === 'manual' ? 'flex' : 'none'
@@ -191,7 +182,7 @@ function setTab(tab) {
   })
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
+// ── Toast ──────────────────────────────────────────────────────────────
 let toastTimer
 function showToast(msg, type = 'ok') {
   const el = document.getElementById('toast')
@@ -201,94 +192,59 @@ function showToast(msg, type = 'ok') {
   toastTimer = setTimeout(() => el.classList.remove('show'), 3000)
 }
 
-// ── Debug bar ─────────────────────────────────────────────────────────────────
-function setDebug(msg) {
-  const el = document.getElementById('debugBar')
-  if (el) el.textContent = msg
-}
-
-// ── Quagga2 ───────────────────────────────────────────────────────────────────
+// ── Scanner con html5-qrcode ─────────────────────────────────────────────
 function iniciarCamara() {
   const statusEl = document.getElementById('camStatus')
-  statusEl.textContent = 'Solicitando permiso de cámara...'
+  statusEl.textContent = 'Iniciando cámara...'
 
-  Quagga.init({
-    inputStream: {
-      name: 'Live',
-      type: 'LiveStream',
-      target: document.getElementById('reader'),
-      constraints: {
-        facingMode: { ideal: 'environment' },
-        width:  { min: 640, ideal: 1280, max: 1920 },
-        height: { min: 480, ideal: 720,  max: 1080 },
-      },
-      area: {
-        // Solo analizar la franja central (más rápido y preciso)
-        top:    '20%',
-        right:  '10%',
-        left:   '10%',
-        bottom: '20%',
-      },
-    },
-    locator: {
-      patchSize: 'large',   // large detecta mejor en baja luz
-      halfSample: false,    // false = más preciso (más lento, pero en mobile está bien)
-    },
-    numOfWorkers: 0,        // 0 = hilo principal, más compatible con mobile
-    frequency: 15,          // intentos por segundo
-    decoder: {
-      readers: [
-        { format: 'ean_reader',     config: {} },
-        { format: 'ean_8_reader',   config: {} },
-        { format: 'upc_reader',     config: {} },
-        { format: 'upc_e_reader',   config: {} },
-        { format: 'code_128_reader',config: {} },
-        { format: 'code_39_reader', config: {} },
-        { format: 'itf_reader',     config: {} },
-      ],
-      multiple: false,
-    },
-    locate: true,
-  }, function(err) {
-    if (err) {
-      console.error('[Quagga init]', err)
-      const msg = (err.name === 'NotAllowedError' || String(err).includes('Permission'))
-        ? '❌ Permiso de cámara denegado — habilitalo en el navegador'
-        : '❌ Error al iniciar cámara: ' + (err.message || err)
-      statusEl.textContent = msg
-      return
-    }
-    Quagga.start()
+  html5QrScanner = new Html5Qrcode('reader')
+
+  const config = {
+    fps: 15,
+    qrbox: { width: 280, height: 100 },  // rect ancho para códigos de barras lineales
+    aspectRatio: 1.5,
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF,
+    ],
+  }
+
+  html5QrScanner.start(
+    { facingMode: 'environment' },
+    config,
+    onScanSuccess,
+    onScanError
+  ).then(() => {
     statusEl.textContent = 'Apuntá al código de barras 🎯'
-    setDebug('Quagga listo')
+  }).catch(err => {
+    const msg = (String(err).includes('NotAllowed') || String(err).includes('Permission'))
+      ? '❌ Permiso de cámara denegado — habilitalo en el navegador'
+      : '❌ Error al iniciar cámara: ' + err
+    statusEl.textContent = msg
+    console.error('[html5-qrcode]', err)
   })
+}
 
-  // onProcessed: mostrar en debug qué está viendo
-  Quagga.onProcessed(function(result) {
-    if (!result) return
-    if (result.codeResult && result.codeResult.code) {
-      const c = result.codeResult.code
-      freqMap[c] = (freqMap[c] || 0) + 1
-      setDebug(`Detectando: ${c} (×${freqMap[c]})`)
-    }
-  })
+function onScanSuccess(decodedText) {
+  if (scanActive) return
+  if (!decodedText || decodedText.length < 6) return
+  scanActive = true
 
-  // onDetected: Quagga confirma la lectura — SIN filtro de error adicional
-  Quagga.onDetected(function(result) {
-    if (scanActive) return
-    const code = result && result.codeResult && result.codeResult.code
-    if (!code || code.length < 6) return
+  if (navigator.vibrate) navigator.vibrate(120)
 
-    // Requiere 2 detecciones confirmadas del mismo código para evitar ruido
-    freqMap[code] = (freqMap[code] || 0) + 1
-    setDebug(`Confirmando: ${code} (×${freqMap[code]})`)
-    if (freqMap[code] < 2) return
+  // Detener el scanner
+  html5QrScanner.stop().catch(() => {})
 
-    scanActive = true
-    Quagga.stop()
-    setDebug('')
-    onCodigoDetectado(code)
-  })
+  onCodigoDetectado(decodedText)
+}
+
+function onScanError() {
+  // Silencioso: html5-qrcode llama esto en cada frame sin deteccion, es normal
 }
 
 async function onCodigoDetectado(codigo) {
@@ -296,9 +252,6 @@ async function onCodigoDetectado(codigo) {
   document.getElementById('codigoDetectado').textContent = codigo
   document.getElementById('scanResult').style.display = 'block'
   document.getElementById('camStatus').textContent = '✓ Capturado: ' + codigo
-
-  // Vibración de feedback
-  if (navigator.vibrate) navigator.vibrate(120)
 
   if (pcMode) {
     await enviarCodigoAPC(codigo)
@@ -349,7 +302,6 @@ async function enviarCodigoAPC(codigo) {
 function resetScan() {
   scanActive = false
   codigoEscaneado = ''
-  Object.keys(freqMap).forEach(k => delete freqMap[k])
   document.getElementById('scanResult').style.display   = 'none'
   document.getElementById('fotoSection').style.display  = 'none'
   document.getElementById('formSection').style.display  = 'none'
@@ -361,8 +313,27 @@ function resetScan() {
   document.getElementById('stockActual').value = '0'
   document.getElementById('fotoPreview').innerHTML = '📦'
   document.getElementById('camStatus').textContent = 'Apuntá al código de barras 🎯'
-  setDebug('')
-  Quagga.start()
+
+  // Reiniciar scanner
+  html5QrScanner.start(
+    { facingMode: 'environment' },
+    {
+      fps: 15,
+      qrbox: { width: 280, height: 100 },
+      aspectRatio: 1.5,
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.ITF,
+      ],
+    },
+    onScanSuccess,
+    onScanError
+  ).catch(() => {})
 }
 
 // ── Foto ──────────────────────────────────────────────────────────────────────
@@ -405,11 +376,11 @@ async function guardarProducto() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         codigo_barras: codigoEscaneado, nombre,
-        categoria: document.getElementById('categoria').value.trim(),
-        foto_url:  document.getElementById('fotoUrl').value.trim(),
-        precio_costo:  parseFloat(document.getElementById('precioCosto').value) || 0,
-        precio_venta:  precioVenta,
-        stock_actual:  parseInt(document.getElementById('stockActual').value) || 0,
+        categoria:    document.getElementById('categoria').value.trim(),
+        foto_url:     document.getElementById('fotoUrl').value.trim(),
+        precio_costo: parseFloat(document.getElementById('precioCosto').value) || 0,
+        precio_venta: precioVenta,
+        stock_actual: parseInt(document.getElementById('stockActual').value) || 0,
         stock_minimo: 5,
       }),
     })
@@ -456,11 +427,11 @@ async function guardarManual() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         codigo_barras: document.getElementById('codigoManual').value.trim(), nombre,
-        categoria: document.getElementById('categoriaManual').value.trim(),
-        foto_url:  document.getElementById('fotoUrlManual').value.trim(),
-        precio_costo:  parseFloat(document.getElementById('precioCostoManual').value) || 0,
-        precio_venta:  precioVenta,
-        stock_actual:  parseInt(document.getElementById('stockActualManual').value) || 0,
+        categoria:    document.getElementById('categoriaManual').value.trim(),
+        foto_url:     document.getElementById('fotoUrlManual').value.trim(),
+        precio_costo: parseFloat(document.getElementById('precioCostoManual').value) || 0,
+        precio_venta: precioVenta,
+        stock_actual: parseInt(document.getElementById('stockActualManual').value) || 0,
         stock_minimo: 5,
       }),
     })
