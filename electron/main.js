@@ -1,17 +1,14 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs   = require('fs')
-const { getDB }                              = require('./database')
+const { getDB }                                          = require('./database')
 const { validateLicense, activateLicense, getMachineId } = require('./license')
-const { startApiServer, getLocalIP }        = require('./api-server')
+const { startApiServer, getLocalIP }                     = require('./api-server')
+const { startNgrok, stopNgrok, getTunnelUrl }            = require('./ngrok-tunnel')
 
-/**
- * Detección de modo desarrollo:
- *  1. Variable explícita ELECTRON_IS_DEV=1  (la setea el script dev:electron)
- *  2. Si el dist/index.html no existe todavía (primer arranque sin build)
- */
+const PORT     = 3001
 const distIndex = path.join(__dirname, '../dist/index.html')
-const isDev =
+const isDev     =
   process.env.ELECTRON_IS_DEV === '1' ||
   !fs.existsSync(distIndex)
 
@@ -51,25 +48,43 @@ ipcMain.handle('db:run', (_, sql, params = []) => {
 })
 
 // IPC: licencia
-ipcMain.handle('license:validate',    ()        => validateLicense())
-ipcMain.handle('license:activate',    (_, key)  => activateLicense(key))
-ipcMain.handle('license:getMachineId', ()       => getMachineId())
+ipcMain.handle('license:validate',    ()       => validateLicense())
+ipcMain.handle('license:activate',    (_, key) => activateLicense(key))
+ipcMain.handle('license:getMachineId', ()      => getMachineId())
 
 // IPC: app
 ipcMain.handle('app:version', () => app.getVersion())
 
-// IPC: info del servidor móvil — ahora HTTP correcto
+// IPC: URL del servidor móvil
+// Devuelve la URL de ngrok si está disponible, si no la IP local (HTTP)
 ipcMain.handle('api:getUrl', () => {
+  const ngrok = getTunnelUrl()
+  if (ngrok) return `${ngrok}/escaner`
   const ip = getLocalIP()
   return `http://${ip}:${PORT}/escaner`
 })
 
-const PORT = 3001
+// IPC: saber si ngrok está activo
+ipcMain.handle('api:getNgrokStatus', () => {
+  const url = getTunnelUrl()
+  return { activo: Boolean(url), url }
+})
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   getDB()
   startApiServer(getDB)
+
+  // Intentar levantar ngrok en background (no bloquea la UI)
+  startNgrok(PORT).then(url => {
+    if (url) console.log('[Main] ngrok listo:', url)
+    else     console.log('[Main] ngrok no disponible, usando HTTP local')
+  })
+
   createWindow()
 })
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+app.on('before-quit', () => stopNgrok())
+app.on('window-all-closed', () => {
+  stopNgrok()
+  if (process.platform !== 'darwin') app.quit()
+})

@@ -8,13 +8,18 @@ const VACIO = {
   stock_actual: '', stock_minimo: '5', categoria: '',
 }
 
-// URL base del servidor HTTPS local (mismo host, puerto 3001)
-function getApiBase() {
-  // En Electron el renderer corre en localhost:5173, pero el servidor está en 3001
-  // Lo obtenemos desde la variable que expone el preload, o caemos a localhost
-  if (window.__API_BASE__) return window.__API_BASE__
-  const host = window.location.hostname
-  return `https://${host}:3001`
+// QR simple via API gratuita (no requiere lib)
+function QRImage({ url }) {
+  const encoded = encodeURIComponent(url)
+  return (
+    <img
+      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encoded}`}
+      alt="QR escaner"
+      width={160}
+      height={160}
+      className="rounded-xl border border-gray-700"
+    />
+  )
 }
 
 export default function ModalProducto({ producto, onGuardar, onCerrar }) {
@@ -24,11 +29,14 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
   const [error, setError]                     = useState('')
   const [mostrarBuscador, setMostrarBuscador] = useState(false)
 
-  // Estado del escáner móvil
+  // Estado del escaner movil
   const [escanerActivo, setEscanerActivo]     = useState(false)
   const [escanerUrl, setEscanerUrl]           = useState('')
   const [escanerMsg, setEscanerMsg]           = useState('')
+  const [ngrokActivo, setNgrokActivo]         = useState(false)
+  const [cargandoUrl, setCargandoUrl]         = useState(false)
   const pollingRef                            = useRef(null)
+  const pollingBaseRef                        = useRef('')
 
   const esEdicion = Boolean(producto?.id)
 
@@ -50,7 +58,6 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     }
   }, [producto])
 
-  // Limpiar polling al desmontar
   useEffect(() => {
     return () => detenerPolling()
   }, [])
@@ -86,31 +93,47 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     }))
   }
 
-  // ── Escáner móvil ─────────────────────────────────────────────────────────
+  // ── Escáner móvil ─────────────────────────────────────────────────────
 
   async function activarEscanerMovil() {
-    const base = getApiBase()
-    const url  = `${base}/escaner?mode=pc`
-    setEscanerUrl(url)
+    setCargandoUrl(true)
     setEscanerActivo(true)
-    setEscanerMsg('Esperando escaneo...')
+    setEscanerMsg('Obteniendo URL...')
 
-    // Limpiar cualquier pendiente anterior
-    await fetch(`${base}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+    try {
+      // Pedir la URL al proceso principal (ngrok o IP local)
+      const fullUrl = await window.electronAPI.getApiUrl()
+      const status  = await window.electronAPI.getNgrokStatus()
+      setNgrokActivo(status.activo)
+      setEscanerUrl(fullUrl)
+      setEscanerMsg(status.activo
+        ? 'Escaneá el QR con el celular'
+        : 'Escáner en red local — mismo WiFi')
 
-    // Polling cada 1.2s
-    pollingRef.current = setInterval(async () => {
-      try {
-        const res  = await fetch(`${base}/api/scan/pending`)
-        const data = await res.json()
-        if (data.pending && data.codigo) {
-          detenerPolling()
-          await recibirCodigo(data.codigo)
+      // Base para el polling: quitar /escaner y ?mode=pc
+      const base = fullUrl.replace('/escaner', '').replace('?mode=pc', '')
+      pollingBaseRef.current = base
+
+      // Limpiar pendiente anterior
+      await fetch(`${base}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+
+      // Polling cada 1.2s
+      pollingRef.current = setInterval(async () => {
+        try {
+          const res  = await fetch(`${base}/api/scan/pending`)
+          const data = await res.json()
+          if (data.pending && data.codigo) {
+            detenerPolling()
+            await recibirCodigo(data.codigo)
+          }
+        } catch {
+          // silencioso
         }
-      } catch {
-        // silencioso — el servidor puede estar levantándose
-      }
-    }, 1200)
+      }, 1200)
+
+    } finally {
+      setCargandoUrl(false)
+    }
   }
 
   function detenerPolling() {
@@ -122,8 +145,8 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
 
   function cancelarEscaner() {
     detenerPolling()
-    const base = getApiBase()
-    fetch(`${base}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+    const base = pollingBaseRef.current
+    if (base) fetch(`${base}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
     setEscanerActivo(false)
     setEscanerMsg('')
   }
@@ -132,7 +155,6 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     setEscanerMsg(`✓ Código recibido: ${codigo}`)
     set('codigo_barras', codigo)
 
-    // Buscar automáticamente en Open Food Facts
     setBuscandoBarras(true)
     const datos = await lookupBarcode(codigo)
     setBuscandoBarras(false)
@@ -145,17 +167,16 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
         foto_url:  datos.foto_url  || f.foto_url,
         categoria: datos.categoria || f.categoria,
       }))
-      setEscanerMsg(`✓ Datos autocompletos — ${datos.nombre || codigo}`)
+      setEscanerMsg(`✓ Autocompleto — ${datos.nombre || codigo}`)
     } else {
       setForm(f => ({ ...f, codigo_barras: codigo }))
       setEscanerMsg('Código recibido — completá los datos manualmente')
     }
 
-    // Cerrar panel escáner después de 2s
     setTimeout(() => setEscanerActivo(false), 2000)
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
+  // ── Submit ─────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
     if (!form.nombre.trim()) return setError('El nombre es obligatorio')
@@ -244,32 +265,50 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
               {!esEdicion && (
                 <button
                   onClick={escanerActivo ? cancelarEscaner : activarEscanerMovil}
+                  disabled={cargandoUrl}
                   className={`mt-2 w-full py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-2
                     ${ escanerActivo
                         ? 'bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
                         : 'bg-violet-600/10 border border-violet-500/30 text-violet-300 hover:bg-violet-600/20'
                     }`}
                 >
-                  {escanerActivo
-                    ? <> <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse block"/> Cancelar espera </>
-                    : <> 📱 Escanear con celular </>
+                  {cargandoUrl
+                    ? <><span className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin block"/> Obteniendo URL...</>
+                    : escanerActivo
+                      ? <><span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse block"/> Cancelar espera</>
+                      : <>📱 Escanear con celular</>
                   }
                 </button>
               )}
 
               {/* Panel escáner activo */}
-              {escanerActivo && (
+              {escanerActivo && escanerUrl && (
                 <div className="mt-2 p-3 rounded-xl bg-violet-900/20 border border-violet-700/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-violet-300 font-medium flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse block"/>
-                      {escanerMsg || 'Esperando escaneo...'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-2">Desde el celular, abrí:</p>
-                  <code className="text-xs text-violet-300 bg-gray-800 px-2 py-1 rounded block break-all">
-                    {escanerUrl}
-                  </code>
+                  <p className="text-xs text-violet-300 font-medium flex items-center gap-1.5 mb-3">
+                    <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse block"/>
+                    {escanerMsg}
+                  </p>
+
+                  {/* QR si ngrok está activo, URL si es LAN */}
+                  {ngrokActivo ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <QRImage url={`${escanerUrl}?mode=pc`} />
+                      <p className="text-xs text-gray-500 text-center">
+                        Escaneá el QR con la cámara del celu
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-500 mb-1">Desde el celular (mismo WiFi), abrí:</p>
+                      <code className="text-xs text-violet-300 bg-gray-800 px-2 py-1 rounded block break-all">
+                        {escanerUrl}?mode=pc
+                      </code>
+                      <p className="text-xs text-amber-400/70 mt-2">
+                        ⚠️ Sin ngrok — instalá ngrok para usar QR y cámara desde cualquier red
+                      </p>
+                    </>
+                  )}
+
                   {buscandoBarras && (
                     <p className="text-xs text-sky-400 mt-2 flex items-center gap-1.5">
                       <span className="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin block"/>
@@ -426,6 +465,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
               {guardando ? 'Guardando...' : esEdicion ? 'Guardar cambios' : 'Crear producto'}
             </button>
           </div>
+
         </div>
       </div>
     </>
