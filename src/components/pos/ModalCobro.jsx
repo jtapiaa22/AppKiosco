@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { usePosStore } from '@/store/posStore'
 import { useVenta } from '@/hooks/useVenta'
-import { dbQuery } from '@/services/database'
+import { dbQuery, dbRun } from '@/services/database'
 
 const TIPOS = [
-  { id: 'efectivo',       label: 'Efectivo',       emoji: '💵', color: 'emerald' },
-  { id: 'transferencia',  label: 'Transferencia',  emoji: '📱', color: 'sky' },
-  { id: 'combinado',      label: 'Combinado',      emoji: '💳', color: 'violet' },
-  { id: 'fiado',          label: 'Fiado',           emoji: '📝', color: 'amber' },
+  { id: 'efectivo',       label: 'Efectivo',       emoji: '\uD83D\uDCB5', color: 'emerald' },
+  { id: 'transferencia',  label: 'Transferencia',  emoji: '\uD83D\uDCF1', color: 'sky' },
+  { id: 'combinado',      label: 'Combinado',      emoji: '\uD83D\uDCB3', color: 'violet' },
+  { id: 'fiado',          label: 'Fiado',           emoji: '\uD83D\uDCDD', color: 'amber' },
 ]
 
 const colorMap = {
@@ -27,6 +27,13 @@ export default function ModalCobro({ onClose, onExito }) {
   const [busqCliente, setBusqCliente] = useState('')
   const [mostrarClientes, setMostrarClientes] = useState(false)
   const [exito, setExito] = useState(null)
+
+  // ── Estado para crear cliente nuevo ───────────────────────
+  const [modoCrear, setModoCrear] = useState(false)
+  const [nuevoNombre, setNuevoNombre] = useState('')
+  const [nuevoTelefono, setNuevoTelefono] = useState('')
+  const [creandoCliente, setCreandoCliente] = useState(false)
+  const [errorCrear, setErrorCrear] = useState(null)
 
   const total = getTotal()
 
@@ -54,6 +61,37 @@ export default function ModalCobro({ onClose, onExito }) {
       ? Math.max(0, (parseFloat(efectivo) || 0) + (parseFloat(transferencia) || 0) - total)
       : 0
 
+  // ── Crear cliente nuevo inline ─────────────────────────────
+  async function handleCrearCliente() {
+    const nombre = nuevoNombre.trim()
+    if (!nombre) { setErrorCrear('El nombre es obligatorio'); return }
+    setCreandoCliente(true)
+    setErrorCrear(null)
+    try {
+      const res = await dbRun(
+        `INSERT INTO clientes (nombre, telefono, deuda_total, activo, creado_en)
+         VALUES (?, ?, 0, 1, datetime('now'))`,
+        [nombre, nuevoTelefono.trim() || null]
+      )
+      const nuevoCliente = {
+        id: res.lastInsertRowid,
+        nombre,
+        telefono: nuevoTelefono.trim() || null,
+        deuda_total: 0,
+      }
+      setCliente(nuevoCliente)
+      setBusqCliente(nombre)
+      setModoCrear(false)
+      setNuevoNombre('')
+      setNuevoTelefono('')
+      setMostrarClientes(false)
+    } catch (e) {
+      setErrorCrear('No se pudo crear el cliente')
+    } finally {
+      setCreandoCliente(false)
+    }
+  }
+
   async function handleConfirmar() {
     const res = await confirmarVenta({
       tipoPago: tipo,
@@ -71,7 +109,7 @@ export default function ModalCobro({ onClose, onExito }) {
     return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
         <div className="bg-gray-900 border border-emerald-500/40 rounded-2xl p-10 text-center max-w-sm w-full mx-4
-                        shadow-2xl shadow-emerald-900/30 animate-bounce-once">
+                        shadow-2xl shadow-emerald-900/30">
           <div className="text-6xl mb-4">✅</div>
           <p className="text-2xl font-bold text-white mb-1">¡Venta registrada!</p>
           <p className="text-3xl font-mono font-bold text-emerald-400">
@@ -112,7 +150,7 @@ export default function ModalCobro({ onClose, onExito }) {
           <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Forma de pago</p>
           <div className="grid grid-cols-4 gap-2">
             {TIPOS.map(t => (
-              <button key={t.id} onClick={() => setTipo(t.id)}
+              <button key={t.id} onClick={() => { setTipo(t.id); setModoCrear(false) }}
                 className={`flex flex-col items-center gap-1 py-3 rounded-xl border text-xs font-medium
                             transition-all ${tipo === t.id ? colorMap[t.color] : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'}`}>
                 <span className="text-xl">{t.emoji}</span>
@@ -162,7 +200,6 @@ export default function ModalCobro({ onClose, onExito }) {
                            text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
               />
             </div>
-            {/* Suma parcial */}
             <div className={`flex justify-between text-sm font-mono px-1
               ${((parseFloat(efectivo)||0)+(parseFloat(transferencia)||0)) >= total ? 'text-emerald-400' : 'text-amber-400'}`}>
               <span>Suma:</span>
@@ -172,38 +209,125 @@ export default function ModalCobro({ onClose, onExito }) {
         )}
 
         {tipo === 'fiado' && (
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Cliente</p>
-            <input value={busqCliente} onChange={e => { setBusqCliente(e.target.value); setMostrarClientes(true) }}
-              onFocus={() => setMostrarClientes(true)}
-              placeholder="Buscar cliente..."
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm
-                         text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-            {mostrarClientes && clientes.length > 0 && (
-              <div className="mt-1 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
-                {clientes.map(c => (
-                  <button key={c.id} onClick={() => { setCliente(c); setBusqCliente(c.nombre); setMostrarClientes(false) }}
-                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-700
-                               text-sm text-left border-b border-gray-700/50 last:border-0 transition-colors">
-                    <div>
-                      <p className="text-white font-medium">{c.nombre}</p>
-                      <p className="text-xs text-gray-500">{c.telefono || '—'}</p>
-                    </div>
-                    {c.deuda_total > 0 && (
-                      <span className="text-xs font-mono text-red-400">
-                        debe ${c.deuda_total.toLocaleString('es-AR')}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Cliente</p>
+
+            {/* Si NO está en modo crear: buscador normal */}
+            {!modoCrear && (
+              <>
+                <input
+                  value={busqCliente}
+                  onChange={e => { setBusqCliente(e.target.value); setMostrarClientes(true); setCliente(null) }}
+                  onFocus={() => setMostrarClientes(true)}
+                  placeholder="Buscar cliente..."
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm
+                             text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+
+                {/* Dropdown de resultados */}
+                {mostrarClientes && (
+                  <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                    {clientes.length > 0
+                      ? clientes.map(c => (
+                          <button key={c.id}
+                            onClick={() => { setCliente(c); setBusqCliente(c.nombre); setMostrarClientes(false) }}
+                            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-700
+                                       text-sm text-left border-b border-gray-700/50 last:border-0 transition-colors">
+                            <div>
+                              <p className="text-white font-medium">{c.nombre}</p>
+                              <p className="text-xs text-gray-500">{c.telefono || '—'}</p>
+                            </div>
+                            {c.deuda_total > 0 && (
+                              <span className="text-xs font-mono text-red-400">
+                                debe ${c.deuda_total.toLocaleString('es-AR')}
+                              </span>
+                            )}
+                          </button>
+                        ))
+                      : (
+                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                            No se encontró &ldquo;{busqCliente}&rdquo;
+                          </div>
+                        )
+                    }
+
+                    {/* Botón crear siempre visible al pie del dropdown */}
+                    <button
+                      onClick={() => { setModoCrear(true); setMostrarClientes(false); setNuevoNombre(busqCliente) }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium
+                                 text-amber-400 hover:bg-amber-500/10 border-t border-gray-700/50
+                                 transition-colors"
+                    >
+                      <span className="text-base">+</span>
+                      Crear nuevo cliente
+                    </button>
+                  </div>
+                )}
+
+                {/* Confirmación del cliente seleccionado */}
+                {clienteSeleccionado && !mostrarClientes && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+                    <p className="text-xs text-amber-400">
+                      Se anotará <strong className="text-amber-300">${total.toLocaleString('es-AR')}</strong> como fiado a <strong className="text-white">{clienteSeleccionado.nombre}</strong>
+                    </p>
+                    <button onClick={() => { setCliente(null); setBusqCliente('') }}
+                      className="text-gray-500 hover:text-red-400 text-xs ml-2 transition-colors">
+                      cambiar
+                    </button>
+                  </div>
+                )}
+              </>
             )}
-            {clienteSeleccionado && (
-              <div className="mt-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                <p className="text-xs text-amber-400">
-                  Se anotará ${total.toLocaleString('es-AR')} como fiado a <strong>{clienteSeleccionado.nombre}</strong>
-                </p>
+
+            {/* Formulario para crear nuevo cliente inline */}
+            {modoCrear && (
+              <div className="bg-gray-800 border border-amber-500/30 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-semibold text-amber-400">Nuevo cliente</p>
+                  <button onClick={() => setModoCrear(false)}
+                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                    ← volver
+                  </button>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Nombre *</label>
+                  <input
+                    autoFocus
+                    value={nuevoNombre}
+                    onChange={e => setNuevoNombre(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCrearCliente()}
+                    placeholder="Ej: Juan Pérez"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-sm
+                               text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Teléfono <span className="text-gray-600">(opcional)</span></label>
+                  <input
+                    value={nuevoTelefono}
+                    onChange={e => setNuevoTelefono(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCrearCliente()}
+                    placeholder="Ej: 11-1234-5678"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-sm
+                               text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {errorCrear && (
+                  <p className="text-xs text-red-400">{errorCrear}</p>
+                )}
+
+                <button
+                  onClick={handleCrearCliente}
+                  disabled={creandoCliente || !nuevoNombre.trim()}
+                  className="w-full py-2.5 rounded-lg font-semibold text-sm transition-all
+                             bg-amber-600 hover:bg-amber-500 text-white
+                             disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                >
+                  {creandoCliente ? 'Guardando...' : 'Guardar y seleccionar'}
+                </button>
               </div>
             )}
           </div>
