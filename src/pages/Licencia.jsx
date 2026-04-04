@@ -1,13 +1,21 @@
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLicencia } from '@/hooks/useLicencia'
 import PantallaActivacion from '@/components/licencia/PantallaActivacion'
 import PantallaOffline from '@/components/licencia/PantallaOffline'
 
-// Esta página se usa como pantalla bloqueante antes de entrar a la app
-// Se muestra solo si la licencia no está validada
 export default function Licencia() {
   const { estado, info, activando, errorActivacion, activar, verificar } = useLicencia()
+  const navigate = useNavigate()
 
-  if (estado === 'verificando') {
+  // Redirigir al POS una vez que la licencia es válida
+  useEffect(() => {
+    if (estado === 'valida') {
+      navigate('/pos', { replace: true })
+    }
+  }, [estado, navigate])
+
+  if (estado === 'verificando' || estado === 'valida') {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl
@@ -24,7 +32,7 @@ export default function Licencia() {
     return (
       <PantallaOffline
         info={info}
-        onContinuar={() => window.location.hash = '/pos'}
+        onContinuar={() => navigate('/pos', { replace: true })}
         onReintentar={verificar}
       />
     )
@@ -41,7 +49,5 @@ export default function Licencia() {
     )
   }
 
-  // Estado 'valida' — redirigir al POS
-  window.location.hash = '/pos'
   return null
 }
