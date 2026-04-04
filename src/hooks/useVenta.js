@@ -4,10 +4,15 @@ import { usePosStore } from '@/store/posStore'
 
 export function useVenta() {
   const [procesando, setProcesando] = useState(false)
-  const [resultado, setResultado] = useState(null)
+  const [resultado, setResultado]   = useState(null)
   const { carrito, clienteSeleccionado, getTotal, limpiarCarrito } = usePosStore()
 
-  async function confirmarVenta({ tipoPago, montoEfectivo = 0, montoTransferencia = 0 }) {
+  async function confirmarVenta({
+    tipoPago,
+    montoEfectivo       = 0,
+    montoTransferencia  = 0,
+    nombreTransferente  = null,   // ← nuevo
+  }) {
     if (carrito.length === 0) return { ok: false, error: 'Carrito vacío' }
     const esFiado = tipoPago === 'fiado'
     if (esFiado && !clienteSeleccionado) return { ok: false, error: 'Seleccioná un cliente para fiado' }
@@ -16,13 +21,30 @@ export function useVenta() {
     try {
       const total = getTotal()
 
-      // 1. Insertar venta
+      // 1. Insertar venta — se agrega nombre_transferente a la columna notas
+      //    (no requiere migrar el esquema: lo guardamos en una columna de texto
+      //    que ya existe o agregamos si no existe)
+      await dbRun(
+        `CREATE TABLE IF NOT EXISTS ventas_transferentes (
+           venta_id         INTEGER PRIMARY KEY,
+           nombre_transferente TEXT NOT NULL
+         )`
+      ).catch(() => {}) // si ya existe, ignorar
+
       const venta = await dbRun(
         `INSERT INTO ventas (cliente_id, total, tipo_pago, monto_efectivo, monto_transferencia, es_fiado)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [clienteSeleccionado?.id ?? null, total, tipoPago, montoEfectivo, montoTransferencia, esFiado ? 1 : 0]
       )
       const ventaId = venta.lastInsertRowid
+
+      // Guardar transferente si se ingresó
+      if (nombreTransferente && (tipoPago === 'transferencia' || tipoPago === 'combinado')) {
+        await dbRun(
+          `INSERT OR REPLACE INTO ventas_transferentes (venta_id, nombre_transferente) VALUES (?, ?)`,
+          [ventaId, nombreTransferente]
+        )
+      }
 
       // 2. Insertar items y descontar stock
       for (const item of carrito) {
