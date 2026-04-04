@@ -2,8 +2,6 @@
  * api-server.js — Servidor HTTP local para acceso desde el celular
  *
  * Puerto 3001, HTTP simple (sin SSL).
- * Chrome en Android permite cámara desde IPs de red local (192.168.x.x)
- * cuando se usa HTTP — es considerado "potentially trustworthy" por la spec.
  *
  * Rutas:
  *   GET  /escaner                  → sirve la mini web móvil
@@ -15,9 +13,12 @@
  *   POST /api/scan/result          → el celu manda el código escaneado
  *   GET  /api/scan/pending         → la PC consulta si hay código esperando
  *   DELETE /api/scan/pending       → la PC consume/limpia el código
+ *
+ *   GET  /api/imagenes?q=...       → busca imágenes via DuckDuckGo (sin CORS)
  */
 
 const http = require('http')
+const https = require('https')
 const fs   = require('fs')
 const path = require('path')
 const os   = require('os')
@@ -62,11 +63,54 @@ function getLocalIP() {
   return 'localhost'
 }
 
+// Fetch simple con Node https — devuelve string
+function fetchText(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+        'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
+        ...headers,
+      },
+    }
+    https.get(url, options, (res) => {
+      let body = ''
+      res.on('data', chunk => (body += chunk))
+      res.on('end', () => resolve(body))
+    }).on('error', reject)
+  })
+}
+
+async function buscarImagenesDDG(query) {
+  const q = encodeURIComponent(query)
+
+  // Paso 1: obtener token vqd
+  const tokenHtml = await fetchText(`https://duckduckgo.com/?q=${q}&iax=images&ia=images`)
+  const vqdMatch = tokenHtml.match(/vqd=['"](\d-[^'"]+)['"]/) ||
+                   tokenHtml.match(/vqd=(\d-[\w-]+)/)
+  if (!vqdMatch) throw new Error('No se pudo obtener token vqd de DuckDuckGo')
+  const vqd = vqdMatch[1]
+
+  // Paso 2: buscar imágenes
+  const apiUrl = `https://duckduckgo.com/i.js?q=${q}&vqd=${encodeURIComponent(vqd)}&f=,,,,,&p=1&v7exp=a`
+  const imgJson = await fetchText(apiUrl, { Referer: 'https://duckduckgo.com/' })
+  const parsed  = JSON.parse(imgJson)
+
+  return (parsed.results || []).slice(0, 24).map(r => ({
+    thumb:  r.thumbnail,
+    url:    r.image,
+    title:  r.title,
+    width:  r.width,
+    height: r.height,
+  }))
+}
+
 // ── Servidor ───────────────────────────────────────────────────────────────
 
 function startApiServer(getDB) {
   const server = http.createServer(async (req, res) => {
-    const url    = req.url.split('?')[0]
+    const urlParsed = new URL(req.url, `http://localhost:${PORT}`)
+    const url    = urlParsed.pathname
     const method = req.method
 
     // CORS preflight
@@ -87,6 +131,19 @@ function startApiServer(getDB) {
         return res.end(fs.readFileSync(htmlPath, 'utf-8'))
       }
       return json(res, 404, { error: 'escaner.html no encontrado' })
+    }
+
+    // ── GET /api/imagenes?q=... ─────────────────────────────────────────────
+    if (method === 'GET' && url === '/api/imagenes') {
+      const q = urlParsed.searchParams.get('q') || ''
+      if (!q.trim()) return json(res, 400, { error: 'Parámetro q requerido' })
+      try {
+        const imagenes = await buscarImagenesDDG(q)
+        return json(res, 200, { ok: true, imagenes })
+      } catch (e) {
+        console.error('[API] Error búsqueda imágenes:', e.message)
+        return json(res, 500, { error: e.message })
+      }
     }
 
     // ── SCAN: el celu manda el código ──────────────────────────────────────

@@ -1,33 +1,18 @@
 /**
  * BuscadorImagenes.jsx
- * Busca imagenes usando la API publica de DuckDuckGo Images (sin API key).
- * Muestra un grid de resultados para elegir.
+ * Busca imágenes usando el endpoint local /api/imagenes (Node hace el fetch,
+ * sin problemas de CORS ni proxies externos).
  */
 import { useState, useEffect, useRef } from 'react'
 
-// Proxy via allorigins para evitar CORS con DuckDuckGo
-async function buscarImagenes(query) {
-  // Paso 1: obtener token vqd de DuckDuckGo
-  const tokenUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`)}`
-  const tokenRes = await fetch(tokenUrl)
-  const tokenData = await tokenRes.json()
-  const vqdMatch = tokenData.contents?.match(/vqd=['"](\d-[^'"]+)['"]/) ||
-                   tokenData.contents?.match(/vqd=(\d-[\w-]+)/)
-  if (!vqdMatch) throw new Error('No se pudo obtener token')
-  const vqd = vqdMatch[1]
+const API_BASE = 'http://localhost:3001'
 
-  // Paso 2: buscar imagenes
-  const imgUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,,,&p=1&v7exp=a`)}`
-  const imgRes = await fetch(imgUrl)
-  const imgData = await imgRes.json()
-  const parsed = JSON.parse(imgData.contents)
-  return (parsed.results || []).slice(0, 24).map(r => ({
-    thumb: r.thumbnail,
-    url:   r.image,
-    title: r.title,
-    width: r.width,
-    height: r.height,
-  }))
+async function buscarImagenes(query) {
+  const res  = await fetch(`${API_BASE}/api/imagenes?q=${encodeURIComponent(query)}`)
+  if (!res.ok) throw new Error(`Error ${res.status}`)
+  const data = await res.json()
+  if (!data.ok) throw new Error(data.error || 'Error desconocido')
+  return data.imagenes || []
 }
 
 export default function BuscadorImagenes({ query: initialQuery, onSeleccionar, onCerrar }) {
@@ -39,11 +24,8 @@ export default function BuscadorImagenes({ query: initialQuery, onSeleccionar, o
   const inputRef = useRef(null)
 
   useEffect(() => {
-    if (initialQuery) buscar(initialQuery)
-  }, [])
-
-  useEffect(() => {
     inputRef.current?.focus()
+    if (initialQuery) buscar(initialQuery)
   }, [])
 
   async function buscar(q = query) {
@@ -87,7 +69,7 @@ export default function BuscadorImagenes({ query: initialQuery, onSeleccionar, o
           </button>
         </div>
 
-        {/* Barra de busqueda */}
+        {/* Barra de búsqueda */}
         <div className="flex gap-2 px-6 py-3 border-b border-gray-800 flex-shrink-0">
           <input
             ref={inputRef}
@@ -108,7 +90,7 @@ export default function BuscadorImagenes({ query: initialQuery, onSeleccionar, o
           </button>
         </div>
 
-        {/* Grid de imagenes */}
+        {/* Grid de imágenes */}
         <div className="overflow-y-auto flex-1 p-4">
           {error && (
             <div className="flex flex-col items-center justify-center h-40 text-center">
