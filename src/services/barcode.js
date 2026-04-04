@@ -1,28 +1,146 @@
 /**
  * barcode.js — Escáner físico + lookup de productos por código de barras
- *
- * Exporta:
- *   listenBarcodeScanner(callback) → función de cleanup
- *   lookupBarcode(codigo)          → Promise<object|null> (Open Food Facts)
  */
 
 const OFF_API = 'https://world.openfoodfacts.org/api/v0/product'
 
+// ── Mapa de tags OFF → categoría corta en español ────────────────────────────────
+const CATEGORIA_MAP = {
+  // Bebidas
+  'beverages':                    'Bebidas',
+  'drinks':                       'Bebidas',
+  'carbonated-drinks':            'Gaseosas',
+  'sodas':                        'Gaseosas',
+  'colas':                        'Gaseosas',
+  'non-alcoholic-beverages':      'Bebidas',
+  'alcoholic-beverages':          'Bebidas alcohólicas',
+  'beers':                        'Cervezas',
+  'wines':                        'Vinos',
+  'spirits':                      'Licores',
+  'juices':                       'Jugos',
+  'fruit-juices':                 'Jugos',
+  'nectars':                      'Jugos',
+  'waters':                       'Agua',
+  'mineral-waters':               'Agua',
+  'energy-drinks':                'Energízantes',
+  'isotonic-drinks':              'Isotónicos',
+  'teas':                         'Infusiones',
+  'coffees':                      'Café',
+  'hot-beverages':                'Infusiones',
+  'milks':                        'Lácteos',
+  'plant-based-milks':            'Bebida vegetal',
+  // Lácteos
+  'dairy-products':               'Lácteos',
+  'cheeses':                      'Quesos',
+  'yogurts':                      'Yogur',
+  'butters':                      'Manteca',
+  'creams':                       'Cremas',
+  'ice-creams':                   'Helados',
+  // Snacks y golosinas
+  'snacks':                       'Snacks',
+  'salty-snacks':                 'Snacks',
+  'chips':                        'Papas fritas',
+  'crackers':                     'Galletas',
+  'biscuits':                     'Galletas',
+  'cookies':                      'Galletas',
+  'wafers':                       'Obleas',
+  'chocolates':                   'Chocolates',
+  'chocolate-candies':            'Chocolates',
+  'candies':                      'Caramelos',
+  'sweets':                       'Golosinas',
+  'gummies':                      'Gomitas',
+  'lollipops':                    'Chupetines',
+  'chewing-gums':                 'Chicles',
+  'confectioneries':              'Golosinas',
+  // Panadería y cereales
+  'breads':                       'Pan',
+  'bakery-products':              'Panadería',
+  'pastries':                     'Facturas',
+  'cakes':                        'Tortas',
+  'cereals':                      'Cereales',
+  'breakfast-cereals':            'Cereales',
+  'granolas':                     'Granola',
+  'cereal-bars':                  'Barras cereal',
+  'pastas':                       'Pastas',
+  // Alimentos básicos
+  'rices':                        'Arroz',
+  'flours':                       'Harinas',
+  'sugars':                       'Azúcar',
+  'salts':                        'Sal',
+  'oils':                         'Aceites',
+  'condiments':                   'Condimentos',
+  'sauces':                       'Salsas',
+  'vinegars':                     'Vinagre',
+  'mustards':                     'Mostaza',
+  'ketchups':                     'Ketchup',
+  'mayonnaises':                  'Mayonesa',
+  // Carnes y proteinas
+  'meats':                        'Carnes',
+  'poultry':                      'Aves',
+  'seafoods':                     'Mariscos',
+  'fish':                         'Pescados',
+  'eggs':                         'Huevos',
+  // Frutas y verduras
+  'fruits':                       'Frutas',
+  'vegetables':                   'Verduras',
+  'legumes':                      'Legumbres',
+  'nuts':                         'Frutos secos',
+  'dried-fruits':                 'Frutas secas',
+  // Congelados y conservas
+  'frozen-foods':                 'Congelados',
+  'canned-goods':                 'Conservas',
+  'preserves':                    'Conservas',
+  // Limpieza e higiene
+  'cleaning-products':            'Limpieza',
+  'household-products':           'Limpieza',
+  'personal-care':                'Higiene',
+  'hygiene-products':             'Higiene',
+  'cosmetics':                    'Cosmética',
+  // Otros
+  'dietary-supplements':          'Suplementos',
+  'baby-foods':                   'Bebés',
+  'pet-foods':                    'Mascotas',
+  'tobaccos':                     'Tabaco',
+  'plant-based-foods':            'Vegano',
+  'organic-foods':                'Orgánico',
+}
+
 /**
- * Escucha un escáner físico de código de barras conectado por USB/HID.
- * Los escáneres se comportan como teclados muy rápidos: escriben el código
- * y envían Enter. Se distinguen del tipeo humano por la velocidad entre teclas.
- *
- * @param {(codigo: string) => void} callback - Se llama con el código detectado
- * @returns {() => void} Función de cleanup para remover el listener
+ * Convierte un array de categories_tags de OFF a una categoría corta en español.
+ * Estrategia:
+ *  1. Recorrer todos los tags buscando coincidencia en CATEGORIA_MAP
+ *  2. Si no hay coincidencia, limpiar el tag más específico (el último) y traducirlo
  */
+function resolverCategoria(tags = []) {
+  if (!tags || tags.length === 0) return ''
+
+  // Normalizar: sacar prefijos de idioma (en:, fr:, es:, etc.)
+  const normalized = tags.map(t =>
+    t.replace(/^[a-z]{2}:/, '').toLowerCase().trim()
+  )
+
+  // 1. Buscar en el mapa empezando por los más genéricos (primeros tags)
+  //    OFF pone los tags de lo general a lo específico
+  for (const tag of normalized) {
+    if (CATEGORIA_MAP[tag]) return CATEGORIA_MAP[tag]
+  }
+
+  // 2. Fallback: limpiar el tag más genérico (primero)
+  const raw = normalized[0] || ''
+  // Reemplazar guón por espacio y capitalizar cada palabra
+  const limpio = raw
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+
+  // Truncar a 2 palabras máximo
+  return limpio.split(' ').slice(0, 2).join(' ')
+}
+
+// ── Escáner físico ────────────────────────────────────────────────────────
 export function listenBarcodeScanner(callback) {
   let buffer = ''
   let lastKeyTime = 0
-
-  // Los escáneres físicos envían cada carácter en < 50ms
-  const SCANNER_SPEED_THRESHOLD = 50 // ms
-  // Longitud mínima para considerar que es un código de barras real
+  const SCANNER_SPEED_THRESHOLD = 50
   const MIN_BARCODE_LENGTH = 3
 
   function onKeyDown(e) {
@@ -30,7 +148,6 @@ export function listenBarcodeScanner(callback) {
     const elapsed = now - lastKeyTime
     lastKeyTime = now
 
-    // Si hay demasiado tiempo entre teclas, resetear el buffer (es tipeo humano)
     if (elapsed > SCANNER_SPEED_THRESHOLD && buffer.length > 0) {
       buffer = ''
     }
@@ -46,25 +163,14 @@ export function listenBarcodeScanner(callback) {
       return
     }
 
-    // Solo acumular caracteres imprimibles (ignorar Shift, Ctrl, etc.)
-    if (e.key.length === 1) {
-      buffer += e.key
-    }
+    if (e.key.length === 1) buffer += e.key
   }
 
   window.addEventListener('keydown', onKeyDown, true)
-
-  // Devolver función de cleanup para useEffect
   return () => window.removeEventListener('keydown', onKeyDown, true)
 }
 
-/**
- * Busca info de un producto en Open Food Facts por código EAN/UPC.
- * Devuelve un objeto compatible con la tabla `productos`, o null si no encuentra.
- *
- * @param {string} codigo - Código de barras (EAN-13, UPC-A, etc.)
- * @returns {Promise<object|null>}
- */
+// ── Lookup Open Food Facts ───────────────────────────────────────────
 export async function lookupBarcode(codigo) {
   try {
     const res = await fetch(`${OFF_API}/${codigo}.json`)
@@ -80,7 +186,7 @@ export async function lookupBarcode(codigo) {
       nombre:        p.product_name || p.product_name_es || `Producto ${codigo}`,
       descripcion:   p.generic_name || '',
       foto_url:      p.image_front_small_url || p.image_url || '',
-      categoria:     p.categories_tags?.[0]?.replace('en:', '') || '',
+      categoria:     resolverCategoria(p.categories_tags),
       precio_costo:  0,
       precio_venta:  0,
       stock_actual:  0,
