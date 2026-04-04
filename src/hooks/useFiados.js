@@ -29,9 +29,13 @@ export function useFiados() {
     return () => clearTimeout(t)
   }, [cargarClientes])
 
-  // Historial de movimientos de un cliente
+  /**
+   * Historial de movimientos de un cliente.
+   * Para cada movimiento tipo 'fiado' que tenga venta_id,
+   * se traen también los items (productos) de esa venta.
+   */
   async function cargarHistorial(clienteId) {
-    return dbQuery(
+    const movimientos = await dbQuery(
       `SELECT f.*, v.vendido_en, v.tipo_pago
        FROM fiados f
        LEFT JOIN ventas v ON f.venta_id = v.id
@@ -40,15 +44,41 @@ export function useFiados() {
        LIMIT 50`,
       [clienteId]
     )
+
+    // Para los fiados con venta_id, traer los items
+    const ventaIds = movimientos
+      .filter(m => m.tipo === 'fiado' && m.venta_id)
+      .map(m => m.venta_id)
+
+    if (ventaIds.length === 0) return movimientos
+
+    // Un SELECT por cada venta_id (SQLite no tiene parámetro IN dinámico fácil)
+    const itemsPorVenta = {}
+    await Promise.all(
+      ventaIds.map(async (vid) => {
+        const items = await dbQuery(
+          `SELECT vi.cantidad, vi.precio_unitario, vi.subtotal,
+                  p.nombre AS producto_nombre
+           FROM ventas_items vi
+           LEFT JOIN productos p ON vi.producto_id = p.id
+           WHERE vi.venta_id = ?
+           ORDER BY vi.id ASC`,
+          [vid]
+        )
+        itemsPorVenta[vid] = items
+      })
+    )
+
+    return movimientos.map(m => ({
+      ...m,
+      items: m.venta_id ? (itemsPorVenta[m.venta_id] ?? []) : [],
+    }))
   }
 
-  // Registrar un abono (parcial o total)
   async function registrarAbono(clienteId, monto, nota = '') {
     const cliente = clientes.find(c => c.id === clienteId)
     if (!cliente) return
-
     const montoReal = Math.min(parseFloat(monto), cliente.deuda_total)
-
     await dbRun(
       `INSERT INTO fiados (cliente_id, monto, tipo, nota) VALUES (?, ?, 'abono', ?)`,
       [clienteId, montoReal, nota || `Abono de $${montoReal.toLocaleString('es-AR')}`]
@@ -61,7 +91,6 @@ export function useFiados() {
     return montoReal
   }
 
-  // Guardar o actualizar cliente
   async function guardarCliente(datos, id = null) {
     if (id) {
       await dbRun(
