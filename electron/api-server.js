@@ -1,7 +1,9 @@
 /**
- * api-server.js — Mini servidor HTTPS local para acceso desde el celular
+ * api-server.js — Servidor HTTP local para acceso desde el celular
  *
- * Puerto 3001, HTTPS con certificado autofirmado.
+ * Puerto 3001, HTTP simple (sin SSL).
+ * Chrome en Android permite cámara desde IPs de red local (192.168.x.x)
+ * cuando se usa HTTP — es considerado "potentially trustworthy" por la spec.
  *
  * Rutas:
  *   GET  /escaner                  → sirve la mini web móvil
@@ -15,14 +17,12 @@
  *   DELETE /api/scan/pending       → la PC consume/limpia el código
  */
 
-const https = require('https')
-const fs    = require('fs')
-const path  = require('path')
-const os    = require('os')
+const http = require('http')
+const fs   = require('fs')
+const path = require('path')
+const os   = require('os')
 
-const PORT      = 3001
-const CERT_PATH = path.join(__dirname, 'cert.pem')
-const KEY_PATH  = path.join(__dirname, 'key.pem')
+const PORT = 3001
 
 // Estado en memoria para el flujo de escaneo
 let pendingScan = null  // { codigo, timestamp }
@@ -65,17 +65,7 @@ function getLocalIP() {
 // ── Servidor ───────────────────────────────────────────────────────────────
 
 function startApiServer(getDB) {
-  if (!fs.existsSync(CERT_PATH) || !fs.existsSync(KEY_PATH)) {
-    console.error('[API] ❌ Certificados SSL no encontrados en electron/cert.pem y electron/key.pem')
-    return null
-  }
-
-  const sslOptions = {
-    key:  fs.readFileSync(KEY_PATH),
-    cert: fs.readFileSync(CERT_PATH),
-  }
-
-  const server = https.createServer(sslOptions, async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url    = req.url.split('?')[0]
     const method = req.method
 
@@ -100,7 +90,6 @@ function startApiServer(getDB) {
     }
 
     // ── SCAN: el celu manda el código ──────────────────────────────────────
-    // POST /api/scan/result  { codigo: "7790895000083" }
     if (method === 'POST' && url === '/api/scan/result') {
       try {
         const body = await readBody(req)
@@ -114,20 +103,18 @@ function startApiServer(getDB) {
     }
 
     // ── SCAN: la PC consulta si hay código pendiente ───────────────────────
-    // GET /api/scan/pending
     if (method === 'GET' && url === '/api/scan/pending') {
       if (!pendingScan) return json(res, 200, { pending: false })
-      // Expira a los 60 segundos
       if (Date.now() - pendingScan.timestamp > 60000) {
         pendingScan = null
         return json(res, 200, { pending: false })
       }
       const result = { pending: true, codigo: pendingScan.codigo }
-      pendingScan = null  // consumir
+      pendingScan = null
       return json(res, 200, result)
     }
 
-    // ── SCAN: limpiar pendiente (si la PC cancela) ────────────────────────
+    // ── SCAN: limpiar pendiente ────────────────────────────────────────────
     if (method === 'DELETE' && url === '/api/scan/pending') {
       pendingScan = null
       return json(res, 200, { ok: true })
@@ -210,9 +197,9 @@ function startApiServer(getDB) {
 
   server.listen(PORT, '0.0.0.0', () => {
     const ip = getLocalIP()
-    console.log(`[API] Servidor HTTPS corriendo en https://${ip}:${PORT}`)
-    console.log(`[API] Escáner móvil: https://${ip}:${PORT}/escaner`)
-    console.log(`[API] Primera vez: aceptá el certificado en el celu`)
+    console.log(`[API] Servidor HTTP corriendo en http://${ip}:${PORT}`)
+    console.log(`[API] Escáner móvil:  http://${ip}:${PORT}/escaner`)
+    console.log(`[API] Abrí esa URL en Chrome Android (misma red WiFi)`)
   })
 
   server.on('error', (e) => {

@@ -58,19 +58,17 @@ ipcMain.handle('license:getMachineId', ()       => getMachineId())
 // IPC: app
 ipcMain.handle('app:version', () => app.getVersion())
 
-// IPC: info del servidor móvil (para mostrar la IP en la UI si se quiere)
+// IPC: info del servidor móvil — ahora HTTP correcto
 ipcMain.handle('api:getUrl', () => {
   const ip = getLocalIP()
-  return `http://${ip}:3001/escaner`
+  return `http://${ip}:${PORT}/escaner`
 })
 
+const PORT = 3001
+
 app.whenReady().then(() => {
-  // Inicializar la DB primero (para que el servidor ya la tenga lista)
   getDB()
-
-  // Levantar el servidor móvil
   startApiServer(getDB)
-
   createWindow()
 })
 
