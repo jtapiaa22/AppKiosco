@@ -14,26 +14,29 @@
     }
     html, body { height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 16px; -webkit-font-smoothing: antialiased; }
     #app { display: flex; flex-direction: column; min-height: 100dvh; max-width: 480px; margin: 0 auto; }
-    .header { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .header { display: flex; align-items: center; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
     .header h1 { font-size: 17px; font-weight: 700; }
     .header p  { font-size: 12px; color: var(--muted); margin-top: 1px; }
-    .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    .tab { flex: 1; padding: 12px 8px; text-align: center; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none; }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .tab { flex: 1; padding: 12px 8px; text-align: center; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; transition: all 0.15s; }
     .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
     .content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-    .camera-wrap { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 4/3; }
-    #video { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .scan-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-    .scan-box { width: 70%; aspect-ratio: 3/1; border: 2px solid var(--primary); border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.5); }
-    .scan-line { position: absolute; left: 15%; width: 70%; height: 2px; background: var(--primary); opacity: 0.9; animation: scanMove 1.8s ease-in-out infinite; }
-    @keyframes scanMove { 0%,100%{top:32%} 50%{top:56%} }
-    .camera-status { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 12px; color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.4); padding: 4px; }
-    #canvas { display: none; }
+
+    /* Cámara — Quagga pone video+canvas dentro de #reader */
+    #reader { position: relative; width: 100%; border-radius: 16px; overflow: hidden; background: #000; min-height: 240px; }
+    #reader video  { width: 100% !important; height: auto !important; display: block; border-radius: 16px; }
+    #reader canvas { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; border-radius: 16px; }
+
+    /* Mira de ayuda visual sobre el lector */
+    .aim-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
+    .aim-box { width: 70%; height: 60px; border: 2px solid rgba(14,165,233,0.8); border-radius: 8px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.35); }
+
+    .camera-status { text-align: center; font-size: 13px; color: var(--muted); padding: 8px 0; min-height: 24px; }
     .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.15s; -webkit-tap-highlight-color: transparent; }
     .btn:active { opacity: 0.75; } .btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .btn-primary { background: var(--primary); color: #fff; }
     .btn-success { background: var(--success); color: #fff; }
-    .btn-outline  { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
+    .btn-outline { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
     .btn-sm { padding: 8px 14px; font-size: 13px; width: auto; border-radius: 8px; }
     label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
     input { width: 100%; background: var(--surface); border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; color: var(--text); font-size: 15px; outline: none; -webkit-appearance: none; }
@@ -54,18 +57,7 @@
     .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
-
-    /* Banner modo "enviar a PC" */
-    .pc-mode-banner {
-      background: rgba(14,165,233,0.12);
-      border: 1px solid rgba(14,165,233,0.3);
-      border-radius: 12px;
-      padding: 12px 16px;
-      font-size: 13px;
-      color: var(--primary);
-      text-align: center;
-      line-height: 1.5;
-    }
+    .pc-mode-banner { background: rgba(14,165,233,0.12); border: 1px solid rgba(14,165,233,0.3); border-radius: 12px; padding: 12px 16px; font-size: 13px; color: var(--primary); text-align: center; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -85,45 +77,37 @@
 
   <!-- TAB ESCANEAR -->
   <div id="tab-scan" class="content">
-
-    <!-- Banner cuando la PC está esperando el código -->
     <div id="pcModeBanner" class="pc-mode-banner" style="display:none">
       💻 La PC está esperando el escaneo.<br>
       <strong>Apuntá al código de barras</strong> y se enviará automáticamente.
     </div>
 
-    <div class="camera-wrap">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="canvas"></canvas>
-      <div class="scan-overlay">
-        <div class="scan-box"></div>
-        <div class="scan-line"></div>
-      </div>
-      <div class="camera-status" id="camStatus">Iniciando cámara...</div>
+    <!-- Quagga2 renderiza el video acá -->
+    <div id="reader">
+      <div class="aim-overlay"><div class="aim-box"></div></div>
     </div>
+    <p class="camera-status" id="camStatus">Iniciando cámara...</p>
 
     <div id="scanResult" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <span class="found-badge">✓ Código detectado</span>
         <button class="btn btn-outline btn-sm" onclick="resetScan()">Nuevo scan</button>
       </div>
-      <p style="font-family:monospace;color:var(--primary);font-size:14px;margin-bottom:4px" id="codigoDetectado"></p>
+      <p style="font-family:monospace;color:var(--primary);font-size:15px;margin-bottom:4px" id="codigoDetectado"></p>
       <p style="font-size:12px;color:var(--muted)" id="offStatus"></p>
     </div>
 
-    <!-- Sección foto (solo en modo guardar directo) -->
+    <!-- Formulario — solo modo standalone -->
     <div id="fotoSection" style="display:none">
       <p class="section-title" style="margin-bottom:12px">Foto del producto</p>
       <div class="foto-wrap">
         <div class="foto-box" id="fotoPreview">📦</div>
-        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
-          <button class="btn btn-outline btn-sm" onclick="tomarFoto()">📸 Sacar foto</button>
+        <div style="flex:1">
           <input id="fotoUrl" type="url" placeholder="https://..." oninput="actualizarFoto()" />
         </div>
       </div>
     </div>
 
-    <!-- Formulario (solo en modo guardar directo) -->
     <div id="formSection" style="display:none">
       <p class="section-title" style="margin-bottom:12px">Datos del producto</p>
       <div style="display:flex;flex-direction:column;gap:14px">
@@ -141,14 +125,13 @@
       </div>
     </div>
 
-    <!-- Mensaje de éxito al enviar a PC -->
-    <div id="pcEnviadoMsg" style="display:none;text-align:center;padding:20px;">
+    <!-- Éxito modo PC -->
+    <div id="pcEnviadoMsg" style="display:none;text-align:center;padding:20px">
       <div style="font-size:48px;margin-bottom:12px">✅</div>
       <p style="font-size:16px;font-weight:700;color:var(--success)">Código enviado a la PC</p>
       <p style="font-size:13px;color:var(--muted);margin-top:6px">Completá los datos en la computadora</p>
       <button class="btn btn-outline" style="margin-top:16px" onclick="resetScan()">Escanear otro</button>
     </div>
-
   </div>
 
   <!-- TAB MANUAL -->
@@ -185,16 +168,17 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<!-- Quagga2: soporte real para EAN en móvil -->
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.4.1/dist/quagga.min.js"></script>
+
 <script>
 const API = window.location.origin
-
-// Detectar si la PC está esperando un escaneo
-// La URL puede traer ?mode=pc para forzar ese modo
 const urlParams = new URLSearchParams(window.location.search)
 let pcMode = urlParams.get('mode') === 'pc'
+let scanActive = false
+let codigoEscaneado = ''
 
-// ── Tabs ──────────────────────────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────────────────────
 function setTab(tab) {
   document.getElementById('tab-scan').style.display   = tab === 'scan'   ? 'flex' : 'none'
   document.getElementById('tab-manual').style.display = tab === 'manual' ? 'flex' : 'none'
@@ -203,7 +187,7 @@ function setTab(tab) {
   })
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────────────────
 let toastTimer
 function showToast(msg, type = 'ok') {
   const el = document.getElementById('toast')
@@ -213,67 +197,84 @@ function showToast(msg, type = 'ok') {
   toastTimer = setTimeout(() => el.classList.remove('show'), 3000)
 }
 
-// ── Cámara + ZXing ────────────────────────────────────────────────────────
-let scanActive = false
-let codigoEscaneado = ''
-let codeReader = null
+// ── Quagga2 ───────────────────────────────────────────────────────────────────
+// Conteo de detecciones para confirmar lectura (evita falsos positivos)
+const detectionBuffer = {}
 
-async function iniciarCamara() {
+function iniciarCamara() {
   const statusEl = document.getElementById('camStatus')
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    })
-    const video = document.getElementById('video')
-    video.srcObject = stream
-    await video.play()
-    statusEl.textContent = 'Apuntá al código de barras'
+  statusEl.textContent = 'Solicitando permiso de cámara...'
 
-    // Esperar a que ZXing cargue (CDN puede tardar)
-    let intentos = 0
-    const waitZXing = setInterval(() => {
-      intentos++
-      if (typeof ZXing !== 'undefined') {
-        clearInterval(waitZXing)
-        iniciarZXing(video)
-      } else if (intentos > 30) {
-        clearInterval(waitZXing)
-        statusEl.textContent = '⚠️ ZXing no cargó — recargá la página'
-      }
-    }, 200)
-  } catch (e) {
-    statusEl.textContent = '❌ Sin acceso a la cámara — permití el acceso'
-    console.error('[Cámara]', e)
-  }
-}
-
-function iniciarZXing(video) {
-  const hints = new Map()
-  const formats = [
-    ZXing.BarcodeFormat.EAN_13,
-    ZXing.BarcodeFormat.EAN_8,
-    ZXing.BarcodeFormat.CODE_128,
-    ZXing.BarcodeFormat.CODE_39,
-    ZXing.BarcodeFormat.UPC_A,
-    ZXing.BarcodeFormat.UPC_E,
-    ZXing.BarcodeFormat.ITF,
-    ZXing.BarcodeFormat.QR_CODE,
-  ]
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats)
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true)
-
-  codeReader = new ZXing.BrowserMultiFormatReader(hints)
-
-  const camStatus = document.getElementById('camStatus')
-  camStatus.textContent = 'Listo — apuntá al código de barras'
-
-  // Leer continuamente del elemento video
-  codeReader.decodeFromVideoElement(video, (result, err) => {
-    if (result && !scanActive) {
-      scanActive = true
-      onCodigoDetectado(result.getText())
+  Quagga.init({
+    inputStream: {
+      name: 'Live',
+      type: 'LiveStream',
+      target: document.getElementById('reader'),
+      constraints: {
+        facingMode: 'environment',
+        width:  { min: 640, ideal: 1280 },
+        height: { min: 480, ideal:  720 },
+      },
+    },
+    locator: {
+      patchSize: 'medium',
+      halfSample: true,
+    },
+    numOfWorkers: 0,
+    frequency: 10,
+    decoder: {
+      readers: [
+        'ean_reader',
+        'ean_8_reader',
+        'upc_reader',
+        'upc_e_reader',
+        'code_128_reader',
+        'code_39_reader',
+        'itf_reader',
+      ],
+      multiple: false,
+    },
+    locate: true,
+  }, function(err) {
+    if (err) {
+      console.error('[Quagga init]', err)
+      const msg = (err.name === 'NotAllowedError' || String(err).includes('Permission'))
+        ? '❌ Permiso de cámara denegado — habilitalo en el navegador'
+        : '❌ Error al iniciar cámara: ' + (err.message || err)
+      statusEl.textContent = msg
+      return
     }
-    // err es normal cuando no hay código en cuadro, lo ignoramos
+    Quagga.start()
+    statusEl.textContent = 'Apuntá al código de barras 🎯'
+  })
+
+  // Lectura parcial — acumular para confirmar
+  Quagga.onProcessed(function(result) {
+    // Quagga dibuja las guías de detección en el canvas automáticamente
+    if (result && result.codeResult && result.codeResult.code) {
+      const c = result.codeResult.code
+      detectionBuffer[c] = (detectionBuffer[c] || 0) + 1
+    }
+  })
+
+  // Resultado confirmado — requiere al menos 2 detecciones del mismo código
+  Quagga.onDetected(function(result) {
+    if (scanActive) return
+    const code = result?.codeResult?.code
+    if (!code || code.length < 6) return
+
+    // Chequeo de error promedio
+    const errs = (result.codeResult.decodedCodes || [])
+      .filter(c => c.error != null).map(c => c.error)
+    const avg = errs.length ? errs.reduce((a,b)=>a+b,0)/errs.length : 0
+    if (avg > 0.3) return
+
+    // Confirmar con buffer
+    if ((detectionBuffer[code] || 0) < 2) return
+
+    scanActive = true
+    Quagga.stop()
+    onCodigoDetectado(code)
   })
 }
 
@@ -281,22 +282,21 @@ async function onCodigoDetectado(codigo) {
   codigoEscaneado = codigo
   document.getElementById('codigoDetectado').textContent = codigo
   document.getElementById('scanResult').style.display = 'block'
+  document.getElementById('camStatus').textContent = '✓ Capturado: ' + codigo
 
   if (pcMode) {
-    // Modo PC: solo enviar el código a la PC y listo
     await enviarCodigoAPC(codigo)
     return
   }
 
-  // Modo standalone: mostrar formulario completo
+  // Modo standalone — mostrar formulario
   document.getElementById('fotoSection').style.display = 'block'
   document.getElementById('formSection').style.display = 'block'
-  document.getElementById('camStatus').textContent = '✓ Código capturado'
 
-  const offStatusEl = document.getElementById('offStatus')
-  offStatusEl.textContent = 'Buscando en Open Food Facts...'
+  const offEl = document.getElementById('offStatus')
+  offEl.textContent = 'Buscando en Open Food Facts...'
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${codigo}.json`)
+    const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${codigo}.json`)
     const data = await res.json()
     if (data.status === 1 && data.product) {
       const p = data.product
@@ -304,17 +304,17 @@ async function onCodigoDetectado(codigo) {
       document.getElementById('categoria').value = resolverCategoria(p.categories_tags)
       document.getElementById('fotoUrl').value   = p.image_front_small_url || p.image_url || ''
       actualizarFoto()
-      offStatusEl.textContent = '✓ Datos autocompletos desde Open Food Facts'
+      offEl.textContent = '✓ Datos autocompletos desde Open Food Facts'
     } else {
-      offStatusEl.textContent = 'No encontrado — completá los datos manualmente'
+      offEl.textContent = 'No encontrado — completá los datos manualmente'
     }
   } catch {
-    offStatusEl.textContent = 'Sin conexión a Open Food Facts'
+    offEl.textContent = 'Sin conexión a Open Food Facts'
   }
 }
 
 async function enviarCodigoAPC(codigo) {
-  document.getElementById('offStatus').textContent = 'Enviando código a la PC...'
+  document.getElementById('offStatus').textContent = 'Enviando a la PC...'
   try {
     const res = await fetch(`${API}/api/scan/result`, {
       method: 'POST',
@@ -322,14 +322,11 @@ async function enviarCodigoAPC(codigo) {
       body: JSON.stringify({ codigo }),
     })
     if (!res.ok) throw new Error('Error del servidor')
-    // Mostrar pantalla de éxito
-    document.getElementById('scanResult').style.display = 'none'
+    document.getElementById('scanResult').style.display   = 'none'
     document.getElementById('pcEnviadoMsg').style.display = 'block'
-    document.getElementById('camStatus').textContent = '✓ Enviado'
     showToast('✅ Código enviado a la PC')
-  } catch (e) {
+  } catch {
     document.getElementById('offStatus').textContent = '❌ Error al enviar — reintentando...'
-    // Reintentar una vez
     setTimeout(() => enviarCodigoAPC(codigo), 2000)
   }
 }
@@ -337,21 +334,22 @@ async function enviarCodigoAPC(codigo) {
 function resetScan() {
   scanActive = false
   codigoEscaneado = ''
+  Object.keys(detectionBuffer).forEach(k => delete detectionBuffer[k])
   document.getElementById('scanResult').style.display   = 'none'
   document.getElementById('fotoSection').style.display  = 'none'
   document.getElementById('formSection').style.display  = 'none'
   document.getElementById('pcEnviadoMsg').style.display = 'none'
-  document.getElementById('nombre').value       = ''
-  document.getElementById('categoria').value    = ''
-  document.getElementById('stockActual').value  = '0'
-  document.getElementById('precioCosto').value  = '0'
-  document.getElementById('precioVenta').value  = '0'
-  document.getElementById('fotoUrl').value      = ''
+  ;['nombre','categoria','fotoUrl','precioCosto','precioVenta'].forEach(id => {
+    const el = document.getElementById(id)
+    if (el) el.value = el.type === 'number' ? '0' : ''
+  })
+  document.getElementById('stockActual').value = '0'
   document.getElementById('fotoPreview').innerHTML = '📦'
-  document.getElementById('camStatus').textContent  = 'Apuntá al código de barras'
+  document.getElementById('camStatus').textContent  = 'Apuntá al código de barras 🎯'
+  Quagga.start()
 }
 
-// ── Foto ──────────────────────────────────────────────────────────────────
+// ── Foto ──────────────────────────────────────────────────────────────────────
 function actualizarFoto() {
   const url = document.getElementById('fotoUrl').value.trim()
   document.getElementById('fotoPreview').innerHTML = url ? `<img src="${url}" alt="foto">` : '📦'
@@ -360,18 +358,8 @@ function actualizarFotoManual() {
   const url = document.getElementById('fotoUrlManual').value.trim()
   document.getElementById('fotoPreviewManual').innerHTML = url ? `<img src="${url}" alt="foto">` : '📦'
 }
-function tomarFoto() {
-  const video = document.getElementById('video')
-  const canvas = document.getElementById('canvas')
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight
-  canvas.getContext('2d').drawImage(video, 0, 0)
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
-  document.getElementById('fotoUrl').value = dataUrl
-  document.getElementById('fotoPreview').innerHTML = `<img src="${dataUrl}" alt="foto">`
-  showToast('📸 Foto capturada')
-}
 
-// ── Margen ────────────────────────────────────────────────────────────────
+// ── Margen ────────────────────────────────────────────────────────────────────
 function calcMargen() {
   mostrarMargen('margenIndicador', +document.getElementById('precioCosto').value, +document.getElementById('precioVenta').value)
 }
@@ -387,7 +375,7 @@ function mostrarMargen(id, costo, venta) {
   el.textContent = `Margen: ${m}% — ${m >= 30 ? 'bueno' : m >= 10 ? 'ajustado' : 'bajo'}`
 }
 
-// ── Guardar (modo standalone) ─────────────────────────────────────────────
+// ── Guardar standalone ────────────────────────────────────────────────────────
 async function guardarProducto() {
   const nombre = document.getElementById('nombre').value.trim()
   if (!nombre) { showToast('⚠️ El nombre es obligatorio', 'err'); return }
@@ -410,8 +398,8 @@ async function guardarProducto() {
       }),
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error || 'Error al guardar')
-    showToast('✅ Producto guardado exitosamente')
+    if (!res.ok) throw new Error(data.error)
+    showToast('✅ Producto guardado')
     setTimeout(resetScan, 1500)
   } catch (e) {
     showToast(`❌ ${e.message}`, 'err')
@@ -420,6 +408,7 @@ async function guardarProducto() {
   }
 }
 
+// ── Manual ────────────────────────────────────────────────────────────────────
 async function buscarManual() {
   const codigo = document.getElementById('codigoManual').value.trim()
   if (!codigo) return
@@ -465,17 +454,15 @@ async function guardarManual() {
   } catch (e) { showToast(`❌ ${e.message}`, 'err') }
 }
 
-// ── Categorías OFF ────────────────────────────────────────────────────────
+// ── Categorías OFF ────────────────────────────────────────────────────────────
 const CAT_MAP = {
   'beverages':'Bebidas','drinks':'Bebidas','carbonated-drinks':'Gaseosas','sodas':'Gaseosas',
-  'colas':'Gaseosas','non-alcoholic-beverages':'Bebidas','alcoholic-beverages':'Beb. alcohólicas',
-  'beers':'Cervezas','wines':'Vinos','spirits':'Licores','juices':'Jugos','waters':'Agua',
-  'mineral-waters':'Agua','energy-drinks':'Energízantes','teas':'Infusiones','coffees':'Café',
+  'colas':'Gaseosas','beers':'Cervezas','wines':'Vinos','juices':'Jugos','waters':'Agua',
+  'mineral-waters':'Agua','energy-drinks':'Energizantes','teas':'Infusiones','coffees':'Café',
   'milks':'Lácteos','dairy-products':'Lácteos','cheeses':'Quesos','yogurts':'Yogur',
   'snacks':'Snacks','salty-snacks':'Snacks','chips':'Papas fritas','crackers':'Galletas',
   'biscuits':'Galletas','cookies':'Galletas','chocolates':'Chocolates','candies':'Caramelos',
-  'sweets':'Golosinas','gummies':'Gomitas','chewing-gums':'Chicles','breads':'Pan',
-  'cereals':'Cereales','breakfast-cereals':'Cereales','pastas':'Pastas','rices':'Arroz',
+  'sweets':'Golosinas','breads':'Pan','cereals':'Cereales','pastas':'Pastas',
   'cleaning-products':'Limpieza','personal-care':'Higiene',
 }
 function resolverCategoria(tags = []) {
@@ -486,7 +473,7 @@ function resolverCategoria(tags = []) {
   return (tags[0] || '').replace(/^[a-z]{2}:/, '').replace(/-/g, ' ')
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 if (pcMode) {
   document.getElementById('pcModeBanner').style.display = 'block'
   document.getElementById('headerSub').textContent = 'Modo escáner — enviá el código a la PC'
