@@ -1,10 +1,15 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, session } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 const { getDB }                                          = require('./database')
 const { validateLicense, activateLicense, getMachineId } = require('./license')
 const { startApiServer, getLocalIP }                     = require('./api-server')
 const { startNgrok, stopNgrok, getTunnelUrl }            = require('./ngrok-tunnel')
+
+// Ignorar errores de certificado SSL (necesario para ngrok en Electron)
+// Esto permite que el polling a la URL ngrok funcione sin SSL handshake errors
+app.commandLine.appendSwitch('ignore-certificate-errors')
+app.commandLine.appendSwitch('ignore-ssl-errors', 'true')
 
 const PORT     = 3001
 const distIndex = path.join(__dirname, '../dist/index.html')
@@ -25,6 +30,16 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  })
+
+  // Bypass SSL en el renderer tambien (para fetch() en React)
+  mainWindow.webContents.session.setCertificateVerifyProc((request, callback) => {
+    // Solo saltear SSL para dominios ngrok
+    if (request.hostname.includes('ngrok') || request.hostname.includes('ngrok-free')) {
+      callback(0) // 0 = ok
+    } else {
+      callback(-3) // -3 = usar verificacion por defecto
+    }
   })
 
   if (isDev) {
