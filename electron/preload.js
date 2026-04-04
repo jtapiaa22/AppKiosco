@@ -8,8 +8,9 @@ contextBridge.exposeInMainWorld('api', {
     run:   (sql, params) => ipcRenderer.invoke('db:run',   sql, params),
   },
   license: {
-    validate:  ()    => ipcRenderer.invoke('license:validate'),
-    activate:  (key) => ipcRenderer.invoke('license:activate', key),
+    validate:     ()    => ipcRenderer.invoke('license:validate'),
+    activate:     (key) => ipcRenderer.invoke('license:activate', key),
+    getMachineId: ()    => ipcRenderer.invoke('license:getMachineId'),
   },
   app: {
     getVersion: () => ipcRenderer.invoke('app:version'),

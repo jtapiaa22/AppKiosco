@@ -1,15 +1,13 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
-const fs = require('fs')
-const { getDB } = require('./database')
-const { validateLicense } = require('./license')
+const fs   = require('fs')
+const { getDB }                              = require('./database')
+const { validateLicense, activateLicense, getMachineId } = require('./license')
 
 /**
  * Detección de modo desarrollo:
  *  1. Variable explícita ELECTRON_IS_DEV=1  (la setea el script dev:electron)
  *  2. Si el dist/index.html no existe todavía (primer arranque sin build)
- *
- * NO usamos NODE_ENV porque Electron no lo hereda siempre del shell.
  */
 const distIndex = path.join(__dirname, '../dist/index.html')
 const isDev =
@@ -32,12 +30,10 @@ function createWindow() {
   })
 
   if (isDev) {
-    // Modo desarrollo: cargar desde el servidor Vite
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
     console.log('[Electron] Modo DEV → http://localhost:5173')
   } else {
-    // Modo producción: cargar el build generado por Vite
     mainWindow.loadFile(distIndex)
     console.log('[Electron] Modo PROD →', distIndex)
   }
@@ -49,13 +45,14 @@ ipcMain.handle('db:query', (_, sql, params = []) => {
 })
 ipcMain.handle('db:run', (_, sql, params = []) => {
   const stmt = getDB().prepare(sql)
-  const res = stmt.run(params)
+  const res  = stmt.run(params)
   return { changes: res.changes, lastInsertRowid: res.lastInsertRowid }
 })
 
 // IPC: licencia
-ipcMain.handle('license:validate', () => validateLicense())
-ipcMain.handle('license:activate', (_, key) => validateLicense(key))
+ipcMain.handle('license:validate',    ()        => validateLicense())
+ipcMain.handle('license:activate',    (_, key)  => activateLicense(key))
+ipcMain.handle('license:getMachineId', ()       => getMachineId())
 
 // IPC: app
 ipcMain.handle('app:version', () => app.getVersion())
