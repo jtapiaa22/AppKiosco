@@ -17,20 +17,16 @@ export default function Stock() {
   const [codigoEscaneado, setCodigoEscaneado] = useState(null)
   const [modalAjuste, setModalAjuste]         = useState(null)
   const [confirmEliminar, setConfirmEliminar] = useState(null)
-
-  // 'nuevo' = abre modal producto | 'buscar' = filtra en la tabla
-  const [modalEscaner, setModalEscaner] = useState(null)
+  const [modalEscaner, setModalEscaner]       = useState(null) // 'nuevo' | 'buscar' | null
 
   const stocksBajos = productos.filter(p => p.stock_actual <= p.stock_minimo).length
 
-  // Escaner en modo NUEVO — igual que antes
   function handleCodigoParaNuevo(codigo) {
     setModalEscaner(null)
     setCodigoEscaneado(codigo)
     setModalProducto({})
   }
 
-  // Escaner en modo BUSCAR — mete el código directo en el filtro
   function handleCodigoParaBuscar(codigo) {
     setModalEscaner(null)
     setFiltro(codigo)
@@ -49,7 +45,6 @@ export default function Stock() {
   return (
     <div className="flex flex-col h-full bg-gray-950">
 
-      {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
         <div>
           <h1 className="text-lg font-bold text-white">Stock</h1>
@@ -73,7 +68,6 @@ export default function Stock() {
         </div>
       </div>
 
-      {/* Barra de filtros */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-800 flex-shrink-0">
         <div className="relative flex-1 max-w-md">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
@@ -86,7 +80,6 @@ export default function Stock() {
             className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-9 pr-10 py-2
                        text-sm text-white placeholder-gray-500
                        focus:outline-none focus:ring-2 focus:ring-sky-500" />
-          {/* Botón escaner dentro del buscador */}
           <button
             onClick={() => setModalEscaner('buscar')}
             title="Escanear para buscar"
@@ -113,7 +106,6 @@ export default function Stock() {
         </button>
       </div>
 
-      {/* Tabla */}
       <div className="flex-1 overflow-auto">
         {cargando ? (
           <div className="flex items-center justify-center h-40">
@@ -155,7 +147,6 @@ export default function Stock() {
         )}
       </div>
 
-      {/* Modal escáner — modo nuevo */}
       {modalEscaner === 'nuevo' && (
         <ModalEscaner
           onCodigo={handleCodigoParaNuevo}
@@ -163,17 +154,16 @@ export default function Stock() {
         />
       )}
 
-      {/* Modal escáner — modo buscar */}
       {modalEscaner === 'buscar' && (
         <ModalEscaner
           onCodigo={handleCodigoParaBuscar}
           onCerrar={() => setModalEscaner(null)}
           titulo="🔍 Escanear para buscar"
           descripcion="Escaneá el código de barras para encontrar el producto en el stock."
+          textoRecibido="Buscando en stock..."
         />
       )}
 
-      {/* Modal nuevo/editar producto */}
       {modalProducto !== null && (
         <ModalProducto
           producto={modalProducto?.id ? modalProducto : null}

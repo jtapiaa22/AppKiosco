@@ -12,7 +12,6 @@ export default function BuscadorProducto({ onProductoNuevo }) {
   const { resultados, cargando, buscarPorTexto, buscarPorCodigo, limpiar } = useProductoSearch()
   const { agregarProducto } = usePosStore()
 
-  // Escuchar escáner físico globalmente
   useEffect(() => {
     const cleanup = listenBarcodeScanner(async (codigo) => {
       setFlash(true)
@@ -29,7 +28,6 @@ export default function BuscadorProducto({ onProductoNuevo }) {
     return cleanup
   }, [])
 
-  // Búsqueda por texto con debounce
   useEffect(() => {
     const t = setTimeout(() => buscarPorTexto(texto), 250)
     return () => clearTimeout(t)
@@ -42,7 +40,6 @@ export default function BuscadorProducto({ onProductoNuevo }) {
     inputRef.current?.focus()
   }
 
-  // Cuando el escáner móvil manda un código, lo ponemos en el input y buscamos
   function handleCodigoEscaneado(codigo) {
     setModalEscaner(false)
     setTexto(codigo)
@@ -51,7 +48,6 @@ export default function BuscadorProducto({ onProductoNuevo }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Barra de búsqueda */}
       <div className={`relative transition-all duration-200 ${flash ? 'ring-2 ring-emerald-400' : ''}`}>
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
           <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -70,7 +66,6 @@ export default function BuscadorProducto({ onProductoNuevo }) {
                      focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent
                      transition-all"
         />
-        {/* Botón escáner móvil */}
         <button
           onClick={() => setModalEscaner(true)}
           title="Escanear con celular"
@@ -85,13 +80,11 @@ export default function BuscadorProducto({ onProductoNuevo }) {
         )}
       </div>
 
-      {/* Indicador modo escáner */}
       <div className="flex items-center gap-2 mt-3 mb-4">
         <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-xs text-gray-500 font-mono">escáner activo — apuntá y saneá</span>
       </div>
 
-      {/* Resultados */}
       {resultados.length > 0 && (
         <div className="flex-1 overflow-y-auto space-y-1 pr-1">
           {resultados.map(p => (
@@ -127,7 +120,6 @@ export default function BuscadorProducto({ onProductoNuevo }) {
         </div>
       )}
 
-      {/* Sin resultados */}
       {texto.length >= 2 && resultados.length === 0 && !cargando && (
         <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
           <div className="text-4xl mb-3">🔍</div>
@@ -136,7 +128,6 @@ export default function BuscadorProducto({ onProductoNuevo }) {
         </div>
       )}
 
-      {/* Estado inicial */}
       {texto.length === 0 && resultados.length === 0 && (
         <div className="flex-1 flex flex-col items-center justify-center text-center py-12 opacity-40">
           <div className="text-5xl mb-4">▋</div>
@@ -144,13 +135,13 @@ export default function BuscadorProducto({ onProductoNuevo }) {
         </div>
       )}
 
-      {/* Modal escáner móvil */}
       {modalEscaner && (
         <ModalEscaner
           onCodigo={handleCodigoEscaneado}
           onCerrar={() => setModalEscaner(false)}
           titulo="🔍 Escanear para buscar"
           descripcion="Escaneá el código de barras para agregar el producto al carrito."
+          textoRecibido="Buscando producto..."
         />
       )}
     </div>
