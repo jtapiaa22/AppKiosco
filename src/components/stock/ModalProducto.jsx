@@ -9,17 +9,9 @@ const VACIO = {
   stock_actual: '', stock_minimo: '5', categoria: '',
 }
 
-/**
- * Props:
- *   producto        — objeto con datos si es edición, null si es nuevo
- *   codigoEscaneado — string con el código de barras leído por el escáner (solo nuevo)
- *   onGuardar       — async fn(form, id|null)
- *   onCerrar        — fn()
- */
 export default function ModalProducto({ producto, codigoEscaneado, onGuardar, onCerrar }) {
   const esEdicion = Boolean(producto?.id)
 
-  // Inicializamos el form UNA sola vez al montar, con toda la info disponible
   const [form, setForm] = useState(() => {
     if (producto) {
       return {
@@ -34,7 +26,6 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
         categoria:     producto.categoria || '',
       }
     }
-    // Nuevo producto: si hay código escaneado lo precargamos
     return { ...VACIO, codigo_barras: codigoEscaneado || '' }
   })
 
@@ -45,23 +36,17 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
   const [mostrarBuscadorOFF, setMostrarBuscadorOFF] = useState(false)
   const [mostrarBuscadorImg, setMostrarBuscadorImg] = useState(false)
 
-  // Si llegó un código escaneado, arrancar búsqueda automática al montar
   useEffect(() => {
-    if (codigoEscaneado) {
-      buscarPorCodigo(codigoEscaneado)
-    }
-    // Solo al montar — la dep array vacía es intencional
+    if (codigoEscaneado) buscarPorCodigo(codigoEscaneado)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // ── Buscar por código de barras en Open Food Facts ───────────────────
   async function buscarPorCodigo(codigo) {
     if (!codigo) return
     setBuscandoBarras(true)
     setInfoMsg('Buscando en base de datos...')
-    // Asegurar que el campo muestre el código
     setForm(f => ({ ...f, codigo_barras: codigo }))
 
     let datos = await lookupBarcode(codigo)
@@ -79,12 +64,11 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
       setInfoMsg(`✓ Autocompletado: ${datos.nombre}`)
       setTimeout(() => setInfoMsg(''), 3500)
     } else {
-      setInfoMsg('No encontrado en la base de datos — completá los datos manualmente')
+      setInfoMsg('No encontrado — completá los datos manualmente o buscá la imagen')
       setTimeout(() => setInfoMsg(''), 4500)
     }
   }
 
-  // ── Botón Buscar manual (código o nombre) ────────────────────────────
   async function handleBuscarAPI() {
     const termino = form.codigo_barras || form.nombre
     if (!termino) return
@@ -125,7 +109,6 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
     setMostrarBuscadorOFF(false)
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (!form.nombre.trim()) return setError('El nombre es obligatorio')
     if (!form.precio_venta)  return setError('El precio de venta es obligatorio')
@@ -146,7 +129,7 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
       )}
       {mostrarBuscadorImg && (
         <BuscadorImagenes
-          query={form.nombre || ''}
+          query={form.nombre || form.codigo_barras || ''}
           onSeleccionar={url => { set('foto_url', url); setMostrarBuscadorImg(false) }}
           onCerrar={() => setMostrarBuscadorImg(false)}
         />
@@ -155,7 +138,6 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
 
-          {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
             <h2 className="font-bold text-white text-base">
               {esEdicion ? 'Editar producto' : 'Nuevo producto'}
@@ -174,10 +156,8 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
             </div>
           </div>
 
-          {/* Cuerpo */}
           <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
 
-            {/* Mensaje info / autocomplete */}
             {(infoMsg || buscandoBarras) && (
               <div className={`flex items-center gap-2 p-3 rounded-xl text-xs
                 ${ buscandoBarras
@@ -226,12 +206,12 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
                     placeholder="https://..."
                     className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-xs
                                text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  {/* Siempre habilitado - BuscadorImagenes tiene su propio campo */}
                   <button
                     onClick={() => setMostrarBuscadorImg(true)}
-                    disabled={!form.nombre}
-                    title={form.nombre ? `Buscar imagen de "${form.nombre}"` : 'Primero ingresá el nombre'}
+                    title="Buscar imagen del producto"
                     className="px-3 py-2 rounded-xl bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30
-                               text-violet-300 text-xs font-medium transition-all disabled:opacity-30 whitespace-nowrap">
+                               text-violet-300 text-xs font-medium transition-all whitespace-nowrap">
                     🔍 Buscar
                   </button>
                 </div>
@@ -324,7 +304,6 @@ export default function ModalProducto({ producto, codigoEscaneado, onGuardar, on
             )}
           </div>
 
-          {/* Footer */}
           <div className="flex gap-3 px-6 py-4 border-t border-gray-800 flex-shrink-0">
             <button onClick={onCerrar}
               className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-400
