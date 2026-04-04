@@ -7,10 +7,9 @@ import { useState, useEffect, useRef } from 'react'
 
 const isElectron = () => typeof window !== 'undefined' && Boolean(window.electronAPI)
 
-// URL para mostrar en el QR (puede ser ngrok)
 async function resolveQrUrl() {
   if (isElectron()) {
-    const url = await window.electronAPI.getApiUrl()
+    const url    = await window.electronAPI.getApiUrl()
     const status = await window.electronAPI.getNgrokStatus()
     return { qrUrl: url, ngrok: status.activo }
   }
@@ -18,7 +17,6 @@ async function resolveQrUrl() {
   return { qrUrl: `http://${host}:3001/escaner`, ngrok: false }
 }
 
-// Base para el POLLING siempre local (la PC se consulta a si misma)
 const POLLING_BASE = 'http://localhost:3001'
 
 function QRImage({ url }) {
@@ -33,10 +31,16 @@ function QRImage({ url }) {
   )
 }
 
-export default function ModalEscaner({ onCodigo, onCerrar }) {
-  const [escanerUrl, setEscanerUrl] = useState('')
-  const [ngrokActivo, setNgrokActivo] = useState(false)
-  const [estado, setEstado] = useState('cargando')
+export default function ModalEscaner({
+  onCodigo,
+  onCerrar,
+  titulo      = '📷 Escanear producto',
+  descripcion = 'Abrí la URL en el celular y escaneá el código de barras.',
+  textoRecibido = 'Abriendo formulario...',
+}) {
+  const [escanerUrl, setEscanerUrl]       = useState('')
+  const [ngrokActivo, setNgrokActivo]     = useState(false)
+  const [estado, setEstado]               = useState('cargando')
   const [codigoRecibido, setCodigoRecibido] = useState('')
   const pollingRef = useRef(null)
 
@@ -50,13 +54,8 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
       const { qrUrl, ngrok } = await resolveQrUrl()
       setNgrokActivo(ngrok)
       setEscanerUrl(qrUrl)
-
-      // Limpiar codigo anterior usando localhost (siempre local)
       await fetch(`${POLLING_BASE}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
-
       setEstado('esperando')
-
-      // Polling SIEMPRE a localhost, sin SSL
       pollingRef.current = setInterval(async () => {
         try {
           const res  = await fetch(`${POLLING_BASE}/api/scan/pending`)
@@ -66,7 +65,9 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
             detener()
             setCodigoRecibido(data.codigo)
             setEstado('recibido')
-            setTimeout(() => onCodigo(data.codigo), 1000)
+            // Pequeña pausa para mostrar el tick verde, luego dispara onCodigo
+            // onCodigo es responsable de cerrar el modal (setModalEscaner(null))
+            setTimeout(() => onCodigo(data.codigo), 600)
           }
         } catch (err) {
           console.warn('[ModalEscaner] polling error:', err)
@@ -93,7 +94,7 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-sm shadow-2xl">
 
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-          <h2 className="font-bold text-white text-base">📷 Escanear producto</h2>
+          <h2 className="font-bold text-white text-base">{titulo}</h2>
           <button onClick={handleCerrar}
             className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white
                        flex items-center justify-center transition-colors text-sm">
@@ -120,9 +121,7 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
           {estado === 'esperando' && escanerUrl && (
             <>
               <p className="text-gray-400 text-sm text-center">
-                {ngrokActivo
-                  ? 'Escaneá este QR desde cualquier celular'
-                  : 'Abrí esta URL en el celular (mismo WiFi)'}
+                {descripcion}
               </p>
 
               <QRImage url={`${escanerUrl}?mode=pc`} />
@@ -147,7 +146,7 @@ export default function ModalEscaner({ onCodigo, onCerrar }) {
               </div>
               <p className="text-emerald-300 font-semibold text-sm">¡Código recibido!</p>
               <code className="text-xs text-gray-400 bg-gray-800 px-3 py-1.5 rounded-lg font-mono">{codigoRecibido}</code>
-              <p className="text-gray-500 text-xs">Abriendo formulario...</p>
+              <p className="text-gray-500 text-xs">{textoRecibido}</p>
             </div>
           )}
         </div>
