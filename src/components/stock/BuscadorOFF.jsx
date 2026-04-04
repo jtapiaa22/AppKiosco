@@ -1,12 +1,12 @@
 /**
  * BuscadorOFF.jsx
- * Modal que busca productos por NOMBRE en Open Food Facts
- * y permite elegir uno para autocompletar el formulario.
+ * Busca productos por NOMBRE en Open Food Facts — solo Argentina.
  */
 import { useState, useEffect, useRef } from 'react'
 import { resolverCategoriaPublic } from '@/services/barcode'
 
-const OFF_SEARCH = 'https://world.openfoodfacts.org/cgi/search.pl'
+// ar.openfoodfacts.org = subdominio Argentina
+const OFF_SEARCH = 'https://ar.openfoodfacts.org/cgi/search.pl'
 
 async function buscarEnOFF(termino) {
   const url = new URL(OFF_SEARCH)
@@ -14,7 +14,7 @@ async function buscarEnOFF(termino) {
   url.searchParams.set('search_simple', '1')
   url.searchParams.set('action', 'process')
   url.searchParams.set('json', '1')
-  url.searchParams.set('page_size', '12')
+  url.searchParams.set('page_size', '15')
   url.searchParams.set('fields', 'code,product_name,product_name_es,brands,categories_tags,image_front_small_url,image_url,generic_name')
   url.searchParams.set('lc', 'es')
 
@@ -25,11 +25,11 @@ async function buscarEnOFF(termino) {
 }
 
 export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
-  const [query, setQuery]         = useState('')
-  const [resultados, setResultados] = useState([])
-  const [buscando, setBuscando]   = useState(false)
-  const [error, setError]         = useState('')
-  const [buscado, setBuscado]     = useState(false)
+  const [query, setQuery]             = useState('')
+  const [resultados, setResultados]   = useState([])
+  const [buscando, setBuscando]       = useState(false)
+  const [error, setError]             = useState('')
+  const [buscado, setBuscado]         = useState(false)
   const inputRef = useRef(null)
 
   useEffect(() => {
@@ -48,7 +48,8 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
       const items = await buscarEnOFF(q)
       setResultados(items)
       setBuscado(true)
-      if (items.length === 0) setError('No se encontraron resultados. Probá con otro término.')
+      if (items.length === 0)
+        setError('No se encontró en Argentina. Probá con otro nombre o marca.')
     } catch {
       setError('No se pudo conectar con Open Food Facts. Verificá la conexión.')
     } finally {
@@ -76,8 +77,10 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 flex-shrink-0">
           <div>
-            <h3 className="font-bold text-white text-sm">Buscar en Open Food Facts</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Escribí el nombre o marca del producto</p>
+            <h3 className="font-bold text-white text-sm">
+              🇦🇷 Buscar productos argentinos
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">Open Food Facts — base de datos Argentina</p>
           </div>
           <button onClick={onCerrar}
             className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white
@@ -92,7 +95,7 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Ej: Coca Cola, Oreo, Milka..."
+            placeholder="Ej: Coca Cola, Oreo, Milka, Serenito..."
             className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm
                        text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
           />
@@ -113,39 +116,36 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
         {/* Resultados */}
         <div className="flex-1 overflow-y-auto px-5 py-3">
 
-          {/* Estado inicial */}
           {!buscado && !buscando && !error && (
-            <div className="text-center py-12 opacity-40">
-              <div className="text-5xl mb-3">🌎</div>
-              <p className="text-gray-400 text-sm">La base de datos tiene más de 3 millones de productos</p>
+            <div className="text-center py-12 opacity-50">
+              <div className="text-5xl mb-3">🇦🇷</div>
+              <p className="text-gray-400 text-sm font-medium">Productos registrados en Argentina</p>
+              <p className="text-gray-600 text-xs mt-1">Arcor, Mastellone, Quilmes, Coca-Cola AR y más</p>
             </div>
           )}
 
-          {/* Error */}
           {error && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center my-4">
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm text-center my-4">
               {error}
             </div>
           )}
 
-          {/* Lista de resultados */}
           {resultados.length > 0 && (
             <div className="space-y-2">
               {resultados.map((p, i) => {
-                const nombre   = p.product_name_es || p.product_name || 'Sin nombre'
-                const marca    = p.brands?.split(',')[0]?.trim() || ''
-                const foto     = p.image_front_small_url || p.image_url || ''
+                const nombre    = p.product_name_es || p.product_name || 'Sin nombre'
+                const marca     = p.brands?.split(',')[0]?.trim() || ''
+                const foto      = p.image_front_small_url || p.image_url || ''
                 const categoria = resolverCategoriaPublic(p.categories_tags)
 
                 return (
                   <button
                     key={p.code || i}
                     onClick={() => elegir(p)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-800 hover:bg-gray-750
+                    className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-800
                                border border-gray-700 hover:border-sky-500/40 text-left transition-all
                                group active:scale-[0.99]"
                   >
-                    {/* Foto */}
                     <div className="w-14 h-14 rounded-lg bg-gray-700 overflow-hidden flex-shrink-0
                                     flex items-center justify-center">
                       {foto
@@ -154,14 +154,11 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
                       }
                     </div>
 
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white truncate group-hover:text-sky-300 transition-colors">
                         {nombre}
                       </p>
-                      {marca && (
-                        <p className="text-xs text-gray-500 truncate">{marca}</p>
-                      )}
+                      {marca && <p className="text-xs text-gray-500 truncate">{marca}</p>}
                       <div className="flex items-center gap-2 mt-1">
                         {categoria && (
                           <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full">
@@ -174,7 +171,6 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
                       </div>
                     </div>
 
-                    {/* Flecha */}
                     <span className="text-gray-600 group-hover:text-sky-400 transition-colors flex-shrink-0">→</span>
                   </button>
                 )
@@ -187,9 +183,9 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
         <div className="px-5 py-3 border-t border-gray-800 flex-shrink-0">
           <p className="text-xs text-gray-600 text-center">
             Datos provistos por{' '}
-            <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener noreferrer"
+            <a href="https://ar.openfoodfacts.org" target="_blank" rel="noopener noreferrer"
                className="text-sky-600 hover:text-sky-400 transition-colors">
-              Open Food Facts
+              Open Food Facts Argentina
             </a>
             {' '}— base colaborativa y de acceso libre
           </p>
