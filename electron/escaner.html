@@ -22,14 +22,14 @@
     .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
     .content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 
-    /* Cámara — Quagga pone video+canvas dentro de #reader */
-    #reader { position: relative; width: 100%; border-radius: 16px; overflow: hidden; background: #000; min-height: 240px; }
+    #reader { position: relative; width: 100%; border-radius: 16px; overflow: hidden; background: #000; min-height: 260px; }
     #reader video  { width: 100% !important; height: auto !important; display: block; border-radius: 16px; }
-    #reader canvas { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; border-radius: 16px; }
+    #reader canvas.drawingBuffer { display: none; }
 
-    /* Mira de ayuda visual sobre el lector */
     .aim-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
-    .aim-box { width: 70%; height: 60px; border: 2px solid rgba(14,165,233,0.8); border-radius: 8px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.35); }
+    .aim-box { width: 75%; height: 70px; border: 2px solid rgba(14,165,233,0.9); border-radius: 8px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.4); }
+    .aim-line { position: absolute; width: 75%; height: 2px; background: rgba(14,165,233,0.6); animation: scan 2s ease-in-out infinite; }
+    @keyframes scan { 0%,100%{top:35%} 50%{top:60%} }
 
     .camera-status { text-align: center; font-size: 13px; color: var(--muted); padding: 8px 0; min-height: 24px; }
     .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.15s; -webkit-tap-highlight-color: transparent; }
@@ -58,6 +58,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
     .pc-mode-banner { background: rgba(14,165,233,0.12); border: 1px solid rgba(14,165,233,0.3); border-radius: 12px; padding: 12px 16px; font-size: 13px; color: var(--primary); text-align: center; line-height: 1.5; }
+    .debug-bar { font-size: 11px; color: var(--muted); font-family: monospace; text-align: center; padding: 4px 0; min-height: 18px; }
   </style>
 </head>
 <body>
@@ -82,11 +83,14 @@
       <strong>Apuntá al código de barras</strong> y se enviará automáticamente.
     </div>
 
-    <!-- Quagga2 renderiza el video acá -->
     <div id="reader">
-      <div class="aim-overlay"><div class="aim-box"></div></div>
+      <div class="aim-overlay">
+        <div class="aim-box"></div>
+        <div class="aim-line"></div>
+      </div>
     </div>
     <p class="camera-status" id="camStatus">Iniciando cámara...</p>
+    <p class="debug-bar" id="debugBar"></p>
 
     <div id="scanResult" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -97,7 +101,6 @@
       <p style="font-size:12px;color:var(--muted)" id="offStatus"></p>
     </div>
 
-    <!-- Formulario — solo modo standalone -->
     <div id="fotoSection" style="display:none">
       <p class="section-title" style="margin-bottom:12px">Foto del producto</p>
       <div class="foto-wrap">
@@ -125,7 +128,6 @@
       </div>
     </div>
 
-    <!-- Éxito modo PC -->
     <div id="pcEnviadoMsg" style="display:none;text-align:center;padding:20px">
       <div style="font-size:48px;margin-bottom:12px">✅</div>
       <p style="font-size:16px;font-weight:700;color:var(--success)">Código enviado a la PC</p>
@@ -168,7 +170,6 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Quagga2: soporte real para EAN en móvil -->
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.4.1/dist/quagga.min.js"></script>
 
 <script>
@@ -177,6 +178,9 @@ const urlParams = new URLSearchParams(window.location.search)
 let pcMode = urlParams.get('mode') === 'pc'
 let scanActive = false
 let codigoEscaneado = ''
+
+// Mapa de frecuencia para confirmar lecturas
+const freqMap = {}
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 function setTab(tab) {
@@ -197,10 +201,13 @@ function showToast(msg, type = 'ok') {
   toastTimer = setTimeout(() => el.classList.remove('show'), 3000)
 }
 
-// ── Quagga2 ───────────────────────────────────────────────────────────────────
-// Conteo de detecciones para confirmar lectura (evita falsos positivos)
-const detectionBuffer = {}
+// ── Debug bar ─────────────────────────────────────────────────────────────────
+function setDebug(msg) {
+  const el = document.getElementById('debugBar')
+  if (el) el.textContent = msg
+}
 
+// ── Quagga2 ───────────────────────────────────────────────────────────────────
 function iniciarCamara() {
   const statusEl = document.getElementById('camStatus')
   statusEl.textContent = 'Solicitando permiso de cámara...'
@@ -211,26 +218,33 @@ function iniciarCamara() {
       type: 'LiveStream',
       target: document.getElementById('reader'),
       constraints: {
-        facingMode: 'environment',
-        width:  { min: 640, ideal: 1280 },
-        height: { min: 480, ideal:  720 },
+        facingMode: { ideal: 'environment' },
+        width:  { min: 640, ideal: 1280, max: 1920 },
+        height: { min: 480, ideal: 720,  max: 1080 },
+      },
+      area: {
+        // Solo analizar la franja central (más rápido y preciso)
+        top:    '20%',
+        right:  '10%',
+        left:   '10%',
+        bottom: '20%',
       },
     },
     locator: {
-      patchSize: 'medium',
-      halfSample: true,
+      patchSize: 'large',   // large detecta mejor en baja luz
+      halfSample: false,    // false = más preciso (más lento, pero en mobile está bien)
     },
-    numOfWorkers: 0,
-    frequency: 10,
+    numOfWorkers: 0,        // 0 = hilo principal, más compatible con mobile
+    frequency: 15,          // intentos por segundo
     decoder: {
       readers: [
-        'ean_reader',
-        'ean_8_reader',
-        'upc_reader',
-        'upc_e_reader',
-        'code_128_reader',
-        'code_39_reader',
-        'itf_reader',
+        { format: 'ean_reader',     config: {} },
+        { format: 'ean_8_reader',   config: {} },
+        { format: 'upc_reader',     config: {} },
+        { format: 'upc_e_reader',   config: {} },
+        { format: 'code_128_reader',config: {} },
+        { format: 'code_39_reader', config: {} },
+        { format: 'itf_reader',     config: {} },
       ],
       multiple: false,
     },
@@ -246,34 +260,33 @@ function iniciarCamara() {
     }
     Quagga.start()
     statusEl.textContent = 'Apuntá al código de barras 🎯'
+    setDebug('Quagga listo')
   })
 
-  // Lectura parcial — acumular para confirmar
+  // onProcessed: mostrar en debug qué está viendo
   Quagga.onProcessed(function(result) {
-    // Quagga dibuja las guías de detección en el canvas automáticamente
-    if (result && result.codeResult && result.codeResult.code) {
+    if (!result) return
+    if (result.codeResult && result.codeResult.code) {
       const c = result.codeResult.code
-      detectionBuffer[c] = (detectionBuffer[c] || 0) + 1
+      freqMap[c] = (freqMap[c] || 0) + 1
+      setDebug(`Detectando: ${c} (×${freqMap[c]})`)
     }
   })
 
-  // Resultado confirmado — requiere al menos 2 detecciones del mismo código
+  // onDetected: Quagga confirma la lectura — SIN filtro de error adicional
   Quagga.onDetected(function(result) {
     if (scanActive) return
-    const code = result?.codeResult?.code
+    const code = result && result.codeResult && result.codeResult.code
     if (!code || code.length < 6) return
 
-    // Chequeo de error promedio
-    const errs = (result.codeResult.decodedCodes || [])
-      .filter(c => c.error != null).map(c => c.error)
-    const avg = errs.length ? errs.reduce((a,b)=>a+b,0)/errs.length : 0
-    if (avg > 0.3) return
-
-    // Confirmar con buffer
-    if ((detectionBuffer[code] || 0) < 2) return
+    // Requiere 2 detecciones confirmadas del mismo código para evitar ruido
+    freqMap[code] = (freqMap[code] || 0) + 1
+    setDebug(`Confirmando: ${code} (×${freqMap[code]})`)
+    if (freqMap[code] < 2) return
 
     scanActive = true
     Quagga.stop()
+    setDebug('')
     onCodigoDetectado(code)
   })
 }
@@ -284,12 +297,14 @@ async function onCodigoDetectado(codigo) {
   document.getElementById('scanResult').style.display = 'block'
   document.getElementById('camStatus').textContent = '✓ Capturado: ' + codigo
 
+  // Vibración de feedback
+  if (navigator.vibrate) navigator.vibrate(120)
+
   if (pcMode) {
     await enviarCodigoAPC(codigo)
     return
   }
 
-  // Modo standalone — mostrar formulario
   document.getElementById('fotoSection').style.display = 'block'
   document.getElementById('formSection').style.display = 'block'
 
@@ -334,7 +349,7 @@ async function enviarCodigoAPC(codigo) {
 function resetScan() {
   scanActive = false
   codigoEscaneado = ''
-  Object.keys(detectionBuffer).forEach(k => delete detectionBuffer[k])
+  Object.keys(freqMap).forEach(k => delete freqMap[k])
   document.getElementById('scanResult').style.display   = 'none'
   document.getElementById('fotoSection').style.display  = 'none'
   document.getElementById('formSection').style.display  = 'none'
@@ -345,7 +360,8 @@ function resetScan() {
   })
   document.getElementById('stockActual').value = '0'
   document.getElementById('fotoPreview').innerHTML = '📦'
-  document.getElementById('camStatus').textContent  = 'Apuntá al código de barras 🎯'
+  document.getElementById('camStatus').textContent = 'Apuntá al código de barras 🎯'
+  setDebug('')
   Quagga.start()
 }
 
