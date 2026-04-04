@@ -47,7 +47,7 @@ function readBody(req) {
   })
 }
 
-export function getLocalIP() {
+function getLocalIP() {
   const interfaces = os.networkInterfaces()
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
@@ -62,7 +62,6 @@ export function getLocalIP() {
 // ── Servidor HTTPS ────────────────────────────────────────────────
 
 function startApiServer(getDB) {
-  // Verificar que existan los certificados
   if (!fs.existsSync(CERT_PATH) || !fs.existsSync(KEY_PATH)) {
     console.error('[API] ❌ Certificados SSL no encontrados en electron/cert.pem y electron/key.pem')
     console.error('[API] Generálos con:')
@@ -89,7 +88,7 @@ function startApiServer(getDB) {
       return res.end()
     }
 
-    // ── Servir la mini web del escáner ─────────────────────────────────
+    // ── Servir la mini web del escáner ───────────────────────────────
     if (method === 'GET' && (url === '/' || url === '/escaner')) {
       const htmlPath = path.join(__dirname, 'escaner.html')
       if (fs.existsSync(htmlPath)) {
@@ -101,7 +100,7 @@ function startApiServer(getDB) {
 
     const db = getDB()
 
-    // ── GET /api/productos ────────────────────────────────────────────
+    // ── GET /api/productos ─────────────────────────────────────────
     if (method === 'GET' && url === '/api/productos') {
       try {
         const rows = db.prepare('SELECT * FROM productos ORDER BY nombre ASC').all()
@@ -111,7 +110,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── GET /api/productos/:codigo ────────────────────────────────────
+    // ── GET /api/productos/:codigo ────────────────────────────────
     const matchCodigo = url.match(/^\/api\/productos\/(.+)$/)
     if (method === 'GET' && matchCodigo) {
       try {
@@ -126,7 +125,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── POST /api/productos ────────────────────────────────────────────
+    // ── POST /api/productos ────────────────────────────────────────
     if (method === 'POST' && url === '/api/productos') {
       try {
         const body = await readBody(req)
@@ -156,7 +155,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── PUT /api/productos/:id ─────────────────────────────────────────
+    // ── PUT /api/productos/:id ──────────────────────────────────────
     const matchId = url.match(/^\/api\/productos\/(\d+)$/)
     if (method === 'PUT' && matchId) {
       try {
@@ -186,7 +185,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── 404 ────────────────────────────────────────────────────────────
+    // ── 404 ────────────────────────────────────────────────────────
     return json(res, 404, { error: 'Ruta no encontrada' })
   })
 
