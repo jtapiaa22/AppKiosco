@@ -1,22 +1,29 @@
 /**
  * BuscadorOFF.jsx
- * Busca productos por NOMBRE en Open Food Facts — solo Argentina.
+ * Busca productos por NOMBRE en Open Food Facts — filtrado a Argentina.
+ * Usamos world.openfoodfacts.org (tiene CORS) con filtro de país en la query.
  */
 import { useState, useEffect, useRef } from 'react'
 import { resolverCategoriaPublic } from '@/services/barcode'
 
-// ar.openfoodfacts.org = subdominio Argentina
-const OFF_SEARCH = 'https://ar.openfoodfacts.org/cgi/search.pl'
+// world = CORS OK. ar. no tiene headers CORS y bloquea desde el navegador.
+const OFF_SEARCH = 'https://world.openfoodfacts.org/cgi/search.pl'
 
 async function buscarEnOFF(termino) {
   const url = new URL(OFF_SEARCH)
-  url.searchParams.set('search_terms', termino)
-  url.searchParams.set('search_simple', '1')
-  url.searchParams.set('action', 'process')
-  url.searchParams.set('json', '1')
-  url.searchParams.set('page_size', '15')
-  url.searchParams.set('fields', 'code,product_name,product_name_es,brands,categories_tags,image_front_small_url,image_url,generic_name')
+  url.searchParams.set('search_terms',   termino)
+  url.searchParams.set('search_simple',  '1')
+  url.searchParams.set('action',         'process')
+  url.searchParams.set('json',           '1')
+  url.searchParams.set('page_size',      '15')
+  url.searchParams.set('fields',
+    'code,product_name,product_name_es,brands,categories_tags,image_front_small_url,image_url,generic_name,countries_tags'
+  )
   url.searchParams.set('lc', 'es')
+  // Filtro de país: solo productos con Argentina en countries_tags
+  url.searchParams.set('tagtype_0',      'countries')
+  url.searchParams.set('tag_contains_0', 'contains')
+  url.searchParams.set('tag_0',          'argentina')
 
   const res = await fetch(url.toString())
   if (!res.ok) throw new Error('Error de red')
@@ -25,11 +32,11 @@ async function buscarEnOFF(termino) {
 }
 
 export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
-  const [query, setQuery]             = useState('')
-  const [resultados, setResultados]   = useState([])
-  const [buscando, setBuscando]       = useState(false)
-  const [error, setError]             = useState('')
-  const [buscado, setBuscado]         = useState(false)
+  const [query, setQuery]           = useState('')
+  const [resultados, setResultados] = useState([])
+  const [buscando, setBuscando]     = useState(false)
+  const [error, setError]           = useState('')
+  const [buscado, setBuscado]       = useState(false)
   const inputRef = useRef(null)
 
   useEffect(() => {
@@ -80,7 +87,7 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
             <h3 className="font-bold text-white text-sm">
               🇦🇷 Buscar productos argentinos
             </h3>
-            <p className="text-xs text-gray-500 mt-0.5">Open Food Facts — base de datos Argentina</p>
+            <p className="text-xs text-gray-500 mt-0.5">Open Food Facts — filtrado a Argentina</p>
           </div>
           <button onClick={onCerrar}
             className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white
@@ -183,9 +190,9 @@ export default function BuscadorOFF({ onSeleccionar, onCerrar }) {
         <div className="px-5 py-3 border-t border-gray-800 flex-shrink-0">
           <p className="text-xs text-gray-600 text-center">
             Datos provistos por{' '}
-            <a href="https://ar.openfoodfacts.org" target="_blank" rel="noopener noreferrer"
+            <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener noreferrer"
                className="text-sky-600 hover:text-sky-400 transition-colors">
-              Open Food Facts Argentina
+              Open Food Facts
             </a>
             {' '}— base colaborativa y de acceso libre
           </p>
