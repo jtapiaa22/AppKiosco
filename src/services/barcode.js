@@ -1,11 +1,62 @@
 /**
- * barcode.js — Lookup de productos por código de barras
+ * barcode.js — Escáner físico + lookup de productos por código de barras
  *
- * Primero busca en la base de datos local (esto lo hace useProductoSearch).
- * Este servicio consulta Open Food Facts como fallback externo.
+ * Exporta:
+ *   listenBarcodeScanner(callback) → función de cleanup
+ *   lookupBarcode(codigo)          → Promise<object|null> (Open Food Facts)
  */
 
 const OFF_API = 'https://world.openfoodfacts.org/api/v0/product'
+
+/**
+ * Escucha un escáner físico de código de barras conectado por USB/HID.
+ * Los escáneres se comportan como teclados muy rápidos: escriben el código
+ * y envían Enter. Se distinguen del tipeo humano por la velocidad entre teclas.
+ *
+ * @param {(codigo: string) => void} callback - Se llama con el código detectado
+ * @returns {() => void} Función de cleanup para remover el listener
+ */
+export function listenBarcodeScanner(callback) {
+  let buffer = ''
+  let lastKeyTime = 0
+
+  // Los escáneres físicos envían cada carácter en < 50ms
+  const SCANNER_SPEED_THRESHOLD = 50 // ms
+  // Longitud mínima para considerar que es un código de barras real
+  const MIN_BARCODE_LENGTH = 3
+
+  function onKeyDown(e) {
+    const now = Date.now()
+    const elapsed = now - lastKeyTime
+    lastKeyTime = now
+
+    // Si hay demasiado tiempo entre teclas, resetear el buffer (es tipeo humano)
+    if (elapsed > SCANNER_SPEED_THRESHOLD && buffer.length > 0) {
+      buffer = ''
+    }
+
+    if (e.key === 'Enter') {
+      const codigo = buffer.trim()
+      buffer = ''
+      if (codigo.length >= MIN_BARCODE_LENGTH) {
+        e.preventDefault()
+        e.stopPropagation()
+        callback(codigo)
+      }
+      return
+    }
+
+    // Solo acumular caracteres imprimibles (ignorar Shift, Ctrl, etc.)
+    if (e.key.length === 1) {
+      buffer += e.key
+    }
+  }
+
+  window.addEventListener('keydown', onKeyDown, true)
+
+  // Devolver función de cleanup para useEffect
+  return () => window.removeEventListener('keydown', onKeyDown, true)
+}
 
 /**
  * Busca info de un producto en Open Food Facts por código EAN/UPC.
@@ -24,7 +75,6 @@ export async function lookupBarcode(codigo) {
 
     const p = data.product
 
-    // Mapear campos de Open Food Facts al esquema de productos
     return {
       codigo_barras: codigo,
       nombre:        p.product_name || p.product_name_es || `Producto ${codigo}`,
