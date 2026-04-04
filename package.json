@@ -4,7 +4,8 @@
   "description": "Sistema de gestión de kiosco con fiados, stock y ventas",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
+    "dev": "vite",
+    "electron": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env ELECTRON_IS_DEV=1 electron .\"",
     "dev:react": "vite",
     "dev:electron": "wait-on http://localhost:5173 && cross-env ELECTRON_IS_DEV=1 electron .",
     "build": "vite build && electron-builder",
