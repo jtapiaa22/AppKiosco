@@ -31,8 +31,8 @@ export function useFiados() {
 
   /**
    * Historial de movimientos de un cliente.
-   * Para cada movimiento tipo 'fiado' que tenga venta_id,
-   * se traen también los items (productos) de esa venta.
+   * - tipo 'deuda' = fiado generado al cobrar (tiene venta_id y productos)
+   * - tipo 'abono' = pago registrado manualmente
    */
   async function cargarHistorial(clienteId) {
     const movimientos = await dbQuery(
@@ -45,21 +45,21 @@ export function useFiados() {
       [clienteId]
     )
 
-    // Para los fiados con venta_id, traer los items
+    // Traer items para los movimientos tipo 'deuda' que tienen venta_id
+    // La tabla se llama venta_items (ver useVenta.js)
     const ventaIds = movimientos
-      .filter(m => m.tipo === 'fiado' && m.venta_id)
+      .filter(m => m.tipo === 'deuda' && m.venta_id)
       .map(m => m.venta_id)
 
     if (ventaIds.length === 0) return movimientos
 
-    // Un SELECT por cada venta_id (SQLite no tiene parámetro IN dinámico fácil)
     const itemsPorVenta = {}
     await Promise.all(
       ventaIds.map(async (vid) => {
         const items = await dbQuery(
           `SELECT vi.cantidad, vi.precio_unitario, vi.subtotal,
                   p.nombre AS producto_nombre
-           FROM ventas_items vi
+           FROM venta_items vi
            LEFT JOIN productos p ON vi.producto_id = p.id
            WHERE vi.venta_id = ?
            ORDER BY vi.id ASC`,

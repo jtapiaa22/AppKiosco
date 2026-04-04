@@ -12,10 +12,11 @@ function formatFecha(str) {
   }
 }
 
-// Tarjeta individual de movimiento
 function TarjetaMovimiento({ mov }) {
   const [expandido, setExpandido] = useState(false)
-  const esFiado  = mov.tipo === 'fiado'
+  // useVenta.js guarda tipo='deuda' para fiados, tipo='abono' para pagos
+  const esFiado   = mov.tipo === 'deuda'
+  const esAbono   = mov.tipo === 'abono'
   const tieneItems = esFiado && mov.items?.length > 0
 
   return (
@@ -48,7 +49,6 @@ function TarjetaMovimiento({ mov }) {
             {esFiado ? '-' : '+'}${mov.monto.toLocaleString('es-AR')}
           </span>
 
-          {/* Botón expandir — solo si tiene items */}
           {tieneItems && (
             <button
               onClick={() => setExpandido(v => !v)}
@@ -62,7 +62,7 @@ function TarjetaMovimiento({ mov }) {
         </div>
       </div>
 
-      {/* Detalle de productos — expandible */}
+      {/* Detalle de productos expandible */}
       {tieneItems && expandido && (
         <div className="border-t border-red-500/10 px-3 pb-2.5 pt-2 space-y-1">
           <p className="text-xs text-gray-600 uppercase tracking-wider mb-1.5">Productos</p>
@@ -81,7 +81,6 @@ function TarjetaMovimiento({ mov }) {
               </span>
             </div>
           ))}
-          {/* Línea total */}
           <div className="flex justify-between pt-1 border-t border-gray-700/50">
             <span className="text-xs text-gray-500">Total</span>
             <span className="text-xs font-bold font-mono text-red-400">
@@ -113,7 +112,6 @@ export default function PanelHistorial({ cliente, cargarHistorial, onAbono, onEd
   return (
     <div className="w-80 flex flex-col bg-gray-900 border-l border-gray-800 h-full">
 
-      {/* Header */}
       <div className="px-5 py-4 border-b border-gray-800 flex-shrink-0">
         <div className="flex items-start justify-between mb-3">
           <div>
@@ -128,14 +126,13 @@ export default function PanelHistorial({ cliente, cargarHistorial, onAbono, onEd
           <div className="flex gap-1">
             <button onClick={() => onEditar(cliente)}
               className="w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400
-                         hover:text-white flex items-center justify-center text-xs transition-colors">\u270F</button>
+                         hover:text-white flex items-center justify-center text-xs transition-colors">✏</button>
             <button onClick={onCerrar}
               className="w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400
                          hover:text-white flex items-center justify-center text-xs transition-colors">✕</button>
           </div>
         </div>
 
-        {/* Deuda actual */}
         <div className={`px-4 py-3 rounded-xl border ${
           tieneDeuda
             ? 'bg-red-500/10 border-red-500/20'
@@ -157,7 +154,6 @@ export default function PanelHistorial({ cliente, cargarHistorial, onAbono, onEd
         )}
       </div>
 
-      {/* Historial */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Historial de movimientos</p>
 
