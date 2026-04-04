@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { lookupBarcode } from '@/services/barcode'
 import BuscadorOFF from '@/components/stock/BuscadorOFF'
 
@@ -8,12 +8,28 @@ const VACIO = {
   stock_actual: '', stock_minimo: '5', categoria: '',
 }
 
+// URL base del servidor HTTPS local (mismo host, puerto 3001)
+function getApiBase() {
+  // En Electron el renderer corre en localhost:5173, pero el servidor está en 3001
+  // Lo obtenemos desde la variable que expone el preload, o caemos a localhost
+  if (window.__API_BASE__) return window.__API_BASE__
+  const host = window.location.hostname
+  return `https://${host}:3001`
+}
+
 export default function ModalProducto({ producto, onGuardar, onCerrar }) {
-  const [form, setForm]               = useState(VACIO)
-  const [buscandoBarras, setBuscandoBarras] = useState(false)
-  const [guardando, setGuardando]     = useState(false)
-  const [error, setError]             = useState('')
+  const [form, setForm]                       = useState(VACIO)
+  const [buscandoBarras, setBuscandoBarras]   = useState(false)
+  const [guardando, setGuardando]             = useState(false)
+  const [error, setError]                     = useState('')
   const [mostrarBuscador, setMostrarBuscador] = useState(false)
+
+  // Estado del escáner móvil
+  const [escanerActivo, setEscanerActivo]     = useState(false)
+  const [escanerUrl, setEscanerUrl]           = useState('')
+  const [escanerMsg, setEscanerMsg]           = useState('')
+  const pollingRef                            = useRef(null)
+
   const esEdicion = Boolean(producto?.id)
 
   useEffect(() => {
@@ -33,6 +49,11 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
       setForm(VACIO)
     }
   }, [producto])
+
+  // Limpiar polling al desmontar
+  useEffect(() => {
+    return () => detenerPolling()
+  }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -54,7 +75,6 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     }
   }
 
-  // Callback cuando el usuario elige un producto en BuscadorOFF
   function aplicarDesdeOFF(datos) {
     setForm(f => ({
       ...f,
@@ -65,6 +85,77 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
       categoria:     datos.categoria     || f.categoria,
     }))
   }
+
+  // ── Escáner móvil ─────────────────────────────────────────────────────────
+
+  async function activarEscanerMovil() {
+    const base = getApiBase()
+    const url  = `${base}/escaner?mode=pc`
+    setEscanerUrl(url)
+    setEscanerActivo(true)
+    setEscanerMsg('Esperando escaneo...')
+
+    // Limpiar cualquier pendiente anterior
+    await fetch(`${base}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+
+    // Polling cada 1.2s
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res  = await fetch(`${base}/api/scan/pending`)
+        const data = await res.json()
+        if (data.pending && data.codigo) {
+          detenerPolling()
+          await recibirCodigo(data.codigo)
+        }
+      } catch {
+        // silencioso — el servidor puede estar levantándose
+      }
+    }, 1200)
+  }
+
+  function detenerPolling() {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }
+
+  function cancelarEscaner() {
+    detenerPolling()
+    const base = getApiBase()
+    fetch(`${base}/api/scan/pending`, { method: 'DELETE' }).catch(() => {})
+    setEscanerActivo(false)
+    setEscanerMsg('')
+  }
+
+  async function recibirCodigo(codigo) {
+    setEscanerMsg(`✓ Código recibido: ${codigo}`)
+    set('codigo_barras', codigo)
+
+    // Buscar automáticamente en Open Food Facts
+    setBuscandoBarras(true)
+    const datos = await lookupBarcode(codigo)
+    setBuscandoBarras(false)
+
+    if (datos) {
+      setForm(f => ({
+        ...f,
+        codigo_barras: codigo,
+        nombre:    datos.nombre    || f.nombre,
+        foto_url:  datos.foto_url  || f.foto_url,
+        categoria: datos.categoria || f.categoria,
+      }))
+      setEscanerMsg(`✓ Datos autocompletos — ${datos.nombre || codigo}`)
+    } else {
+      setForm(f => ({ ...f, codigo_barras: codigo }))
+      setEscanerMsg('Código recibido — completá los datos manualmente')
+    }
+
+    // Cerrar panel escáner después de 2s
+    setTimeout(() => setEscanerActivo(false), 2000)
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
     if (!form.nombre.trim()) return setError('El nombre es obligatorio')
@@ -87,7 +178,6 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
 
   return (
     <>
-      {/* Buscador OFF (se superpone encima del modal de producto) */}
       {mostrarBuscador && (
         <BuscadorOFF
           onSeleccionar={aplicarDesdeOFF}
@@ -104,12 +194,10 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
               {esEdicion ? 'Editar producto' : 'Nuevo producto'}
             </h2>
             <div className="flex items-center gap-2">
-              {/* Botón buscar por nombre — la estrella de esta feature */}
               <button
                 onClick={() => setMostrarBuscador(true)}
                 className="px-3 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/40 border border-sky-500/30
                            text-sky-300 text-xs font-medium transition-all flex items-center gap-1.5"
-                title="Buscar en Open Food Facts por nombre"
               >
                 🌍 Buscar en base de datos
               </button>
@@ -124,7 +212,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
           {/* Cuerpo scrolleable */}
           <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
 
-            {/* Código de barras + lookup */}
+            {/* Código de barras */}
             <div>
               <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1.5">
                 Código de barras
@@ -151,6 +239,45 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                   {buscandoBarras ? 'Buscando...' : 'Buscar API'}
                 </button>
               </div>
+
+              {/* Botón escáner móvil */}
+              {!esEdicion && (
+                <button
+                  onClick={escanerActivo ? cancelarEscaner : activarEscanerMovil}
+                  className={`mt-2 w-full py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-2
+                    ${ escanerActivo
+                        ? 'bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+                        : 'bg-violet-600/10 border border-violet-500/30 text-violet-300 hover:bg-violet-600/20'
+                    }`}
+                >
+                  {escanerActivo
+                    ? <> <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse block"/> Cancelar espera </>
+                    : <> 📱 Escanear con celular </>
+                  }
+                </button>
+              )}
+
+              {/* Panel escáner activo */}
+              {escanerActivo && (
+                <div className="mt-2 p-3 rounded-xl bg-violet-900/20 border border-violet-700/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-violet-300 font-medium flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse block"/>
+                      {escanerMsg || 'Esperando escaneo...'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2">Desde el celular, abrí:</p>
+                  <code className="text-xs text-violet-300 bg-gray-800 px-2 py-1 rounded block break-all">
+                    {escanerUrl}
+                  </code>
+                  {buscandoBarras && (
+                    <p className="text-xs text-sky-400 mt-2 flex items-center gap-1.5">
+                      <span className="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin block"/>
+                      Buscando en Open Food Facts...
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Foto preview + URL */}
@@ -163,9 +290,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                 }
               </div>
               <div className="flex-1">
-                <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1.5">
-                  URL de foto
-                </label>
+                <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1.5">URL de foto</label>
                 <input
                   value={form.foto_url}
                   onChange={e => set('foto_url', e.target.value)}
