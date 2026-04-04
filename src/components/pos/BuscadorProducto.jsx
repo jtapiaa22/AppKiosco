@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import { useProductoSearch } from '@/hooks/useProductoSearch'
 import { listenBarcodeScanner } from '@/services/barcode'
 import { usePosStore } from '@/store/posStore'
+import ModalEscaner from '@/components/stock/ModalEscaner'
 
 export default function BuscadorProducto({ onProductoNuevo }) {
   const [texto, setTexto] = useState('')
   const [flash, setFlash] = useState(false)
+  const [modalEscaner, setModalEscaner] = useState(false)
   const inputRef = useRef(null)
   const { resultados, cargando, buscarPorTexto, buscarPorCodigo, limpiar } = useProductoSearch()
   const { agregarProducto } = usePosStore()
@@ -40,6 +42,13 @@ export default function BuscadorProducto({ onProductoNuevo }) {
     inputRef.current?.focus()
   }
 
+  // Cuando el escáner móvil manda un código, lo ponemos en el input y buscamos
+  function handleCodigoEscaneado(codigo) {
+    setModalEscaner(false)
+    setTexto(codigo)
+    inputRef.current?.focus()
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Barra de búsqueda */}
@@ -56,13 +65,21 @@ export default function BuscadorProducto({ onProductoNuevo }) {
           value={texto}
           onChange={e => setTexto(e.target.value)}
           placeholder="Buscar producto o escanear código de barras..."
-          className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-11 pr-4 py-3.5
+          className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-11 pr-12 py-3.5
                      text-white placeholder-gray-500 text-sm font-mono
                      focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent
                      transition-all"
         />
+        {/* Botón escáner móvil */}
+        <button
+          onClick={() => setModalEscaner(true)}
+          title="Escanear con celular"
+          className="absolute inset-y-0 right-0 pr-3 flex items-center
+                     text-violet-400 hover:text-violet-300 transition-colors">
+          📷
+        </button>
         {cargando && (
-          <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
+          <div className="absolute inset-y-0 right-8 pr-1 flex items-center">
             <div className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
@@ -85,23 +102,18 @@ export default function BuscadorProducto({ onProductoNuevo }) {
                          hover:bg-gray-700 border border-gray-700/50 hover:border-gray-600
                          transition-all text-left group"
             >
-              {/* Foto del producto */}
               <div className="w-12 h-12 rounded-lg bg-gray-700 overflow-hidden flex-shrink-0 flex items-center justify-center">
                 {p.foto_url
                   ? <img src={p.foto_url} alt={p.nombre} className="w-full h-full object-cover" />
                   : <span className="text-xl">📦</span>
                 }
               </div>
-
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate group-hover:text-sky-300 transition-colors">
                   {p.nombre}
                 </p>
                 <p className="text-xs text-gray-500 font-mono">{p.codigo_barras || '—'}</p>
               </div>
-
-              {/* Precio + stock */}
               <div className="text-right flex-shrink-0">
                 <p className="text-sm font-bold text-emerald-400 font-mono">
                   ${p.precio_venta?.toLocaleString('es-AR')}
@@ -115,7 +127,7 @@ export default function BuscadorProducto({ onProductoNuevo }) {
         </div>
       )}
 
-      {/* Estado vacío — con texto pero sin resultados */}
+      {/* Sin resultados */}
       {texto.length >= 2 && resultados.length === 0 && !cargando && (
         <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
           <div className="text-4xl mb-3">🔍</div>
@@ -130,6 +142,16 @@ export default function BuscadorProducto({ onProductoNuevo }) {
           <div className="text-5xl mb-4">▋</div>
           <p className="text-gray-400 text-sm">Escribí o escaneá para buscar</p>
         </div>
+      )}
+
+      {/* Modal escáner móvil */}
+      {modalEscaner && (
+        <ModalEscaner
+          onCodigo={handleCodigoEscaneado}
+          onCerrar={() => setModalEscaner(false)}
+          titulo="🔍 Escanear para buscar"
+          descripcion="Escaneá el código de barras para agregar el producto al carrito."
+        />
       )}
     </div>
   )
