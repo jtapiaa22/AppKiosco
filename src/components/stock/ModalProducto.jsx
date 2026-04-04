@@ -8,8 +8,6 @@ const VACIO = {
   stock_actual: '', stock_minimo: '5', categoria: '',
 }
 
-// ── Utilidades ──────────────────────────────────────────────────────────────
-
 const isElectron = () => typeof window !== 'undefined' && Boolean(window.electronAPI)
 
 async function resolveEscanerUrl() {
@@ -18,7 +16,6 @@ async function resolveEscanerUrl() {
     const status = await window.electronAPI.getNgrokStatus()
     return { url, ngrok: status.activo }
   }
-  // Modo npm run dev: sin Electron, usar IP del host directamente
   const host = window.location.hostname || 'localhost'
   return { url: `http://${host}:3001/escaner`, ngrok: false }
 }
@@ -35,13 +32,11 @@ function QRImage({ url }) {
   )
 }
 
-// ── Componente principal ────────────────────────────────────────────────
-
-export default function ModalProducto({ producto, onGuardar, onCerrar }) {
-  const [form, setForm]                     = useState(VACIO)
-  const [buscandoBarras, setBuscandoBarras] = useState(false)
-  const [guardando, setGuardando]           = useState(false)
-  const [error, setError]                   = useState('')
+export default function ModalProducto({ producto, codigoEscaneado, onGuardar, onCerrar }) {
+  const [form, setForm]                       = useState(VACIO)
+  const [buscandoBarras, setBuscandoBarras]   = useState(false)
+  const [guardando, setGuardando]             = useState(false)
+  const [error, setError]                     = useState('')
   const [mostrarBuscador, setMostrarBuscador] = useState(false)
 
   const [escanerActivo, setEscanerActivo]   = useState(false)
@@ -54,6 +49,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
 
   const esEdicion = Boolean(producto?.id)
 
+  // Inicializar form con producto existente o con codigo recibido por prop
   useEffect(() => {
     if (producto) {
       setForm({
@@ -72,11 +68,17 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     }
   }, [producto])
 
+  // Si llega un codigo escaneado desde afuera (Stock.jsx polling), autocompleta
+  useEffect(() => {
+    if (!codigoEscaneado) return
+    recibirCodigo(codigoEscaneado)
+  }, [codigoEscaneado])
+
   useEffect(() => () => detenerPolling(), [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // ── Open Food Facts ───────────────────────────────────────────────
+  // ── Open Food Facts ────────────────────────────────────────────────
 
   async function buscarEnAPI() {
     if (!form.codigo_barras) return
@@ -102,7 +104,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     }))
   }
 
-  // ── Escáner móvil ───────────────────────────────────────────────────
+  // ── Escáner móvil ──────────────────────────────────────────────────
 
   async function activarEscanerMovil() {
     setCargandoUrl(true)
@@ -156,7 +158,13 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     const datos = await lookupBarcode(codigo)
     setBuscandoBarras(false)
     if (datos) {
-      setForm(f => ({ ...f, codigo_barras: codigo, nombre: datos.nombre || f.nombre, foto_url: datos.foto_url || f.foto_url, categoria: datos.categoria || f.categoria }))
+      setForm(f => ({
+        ...f,
+        codigo_barras: codigo,
+        nombre:        datos.nombre    || f.nombre,
+        foto_url:      datos.foto_url  || f.foto_url,
+        categoria:     datos.categoria || f.categoria,
+      }))
       setEscanerMsg(`✓ Autocompleto — ${datos.nombre || codigo}`)
     } else {
       setForm(f => ({ ...f, codigo_barras: codigo }))
@@ -165,7 +173,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
     setTimeout(() => setEscanerActivo(false), 2000)
   }
 
-  // ── Submit ───────────────────────────────────────────────────────────
+  // ── Submit ─────────────────────────────────────────────────────────
 
   async function handleSubmit() {
     if (!form.nombre.trim()) return setError('El nombre es obligatorio')
@@ -209,6 +217,19 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
           {/* Cuerpo */}
           <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
 
+            {/* Mensaje de autocomplete por prop externo */}
+            {codigoEscaneado && buscandoBarras && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-violet-900/20 border border-violet-700/30">
+                <span className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin block flex-shrink-0" />
+                <p className="text-xs text-violet-300">Buscando en Open Food Facts...</p>
+              </div>
+            )}
+            {codigoEscaneado && escanerMsg && !buscandoBarras && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-900/20 border border-emerald-700/30">
+                <span className="text-emerald-400 text-xs">{escanerMsg}</span>
+              </div>
+            )}
+
             {/* Código de barras */}
             <div>
               <label className="text-xs text-gray-500 uppercase tracking-wider block mb-1.5">Código de barras</label>
@@ -223,8 +244,8 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                 </button>
               </div>
 
-              {/* Botón escáner */}
-              {!esEdicion && (
+              {/* Botón escáner — solo en modo nuevo y sin codigo externo */}
+              {!esEdicion && !codigoEscaneado && (
                 <button onClick={escanerActivo ? cancelarEscaner : activarEscanerMovil} disabled={cargandoUrl}
                   className={`mt-2 w-full py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-2
                     ${escanerActivo
@@ -238,7 +259,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                 </button>
               )}
 
-              {/* Panel escáner */}
+              {/* Panel escáner interno */}
               {escanerActivo && escanerUrl && (
                 <div className="mt-2 p-3 rounded-xl bg-violet-900/20 border border-violet-700/30">
                   <p className="text-xs text-violet-300 font-medium flex items-center gap-1.5 mb-3">
@@ -256,11 +277,6 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                       <code className="text-xs text-violet-300 bg-gray-800 px-2 py-1 rounded block break-all">
                         {escanerUrl}?mode=pc
                       </code>
-                      {!isElectron() && (
-                        <p className="text-xs text-amber-400/70 mt-2">
-                          ⚠️ Modo dev — la cámara funciona solo en <code>npm run electron</code> con ngrok activo
-                        </p>
-                      )}
                     </>
                   )}
                   {buscandoBarras && (
@@ -350,7 +366,7 @@ export default function ModalProducto({ producto, onGuardar, onCerrar }) {
                   <p className="text-xs text-gray-600 mb-1">Mínimo (alerta)</p>
                   <input type="number" value={form.stock_minimo} onChange={e => set('stock_minimo', e.target.value)}
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white font-mono focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                </div>
+                  </div>
               </div>
             </div>
 
