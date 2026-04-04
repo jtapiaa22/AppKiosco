@@ -1,2 +1,7 @@
 node_modules
-node_modules
+dist
+dist-electron
+
+# Certificados SSL locales — no subir al repo
+electron/*.pem
+*.pem
