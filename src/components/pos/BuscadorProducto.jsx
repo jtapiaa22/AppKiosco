@@ -12,6 +12,7 @@ export default function BuscadorProducto({ onProductoNuevo }) {
   const { resultados, cargando, buscarPorTexto, buscarPorCodigo, limpiar } = useProductoSearch()
   const { agregarProducto } = usePosStore()
 
+  // Escáner físico — igual que antes
   useEffect(() => {
     const cleanup = listenBarcodeScanner(async (codigo) => {
       setFlash(true)
@@ -28,6 +29,7 @@ export default function BuscadorProducto({ onProductoNuevo }) {
     return cleanup
   }, [])
 
+  // Búsqueda por texto con debounce
   useEffect(() => {
     const t = setTimeout(() => buscarPorTexto(texto), 250)
     return () => clearTimeout(t)
@@ -40,9 +42,22 @@ export default function BuscadorProducto({ onProductoNuevo }) {
     inputRef.current?.focus()
   }
 
-  function handleCodigoEscaneado(codigo) {
+  // Escáner móvil — mismo comportamiento que el físico
+  async function handleCodigoEscaneado(codigo) {
     setModalEscaner(false)
-    setTexto(codigo)
+    setFlash(true)
+    setTimeout(() => setFlash(false), 300)
+    const { producto, nuevo } = await buscarPorCodigo(codigo)
+    if (producto && !nuevo) {
+      agregarProducto(producto)
+      setTexto('')
+      limpiar()
+    } else if (nuevo && onProductoNuevo) {
+      onProductoNuevo(producto)
+    } else {
+      // No encontrado — mostrar el código en el input para que el usuario vea
+      setTexto(codigo)
+    }
     inputRef.current?.focus()
   }
 
