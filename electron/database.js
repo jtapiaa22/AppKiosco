@@ -37,10 +37,34 @@ function runMigrations(db) {
 
   for (const file of files) {
     if (applied.has(file)) continue
+
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8')
-    db.exec(sql)
-    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file)
-    console.log(`[DB] Migración aplicada: ${file}`)
+
+    try {
+      db.exec(sql)
+      console.log(`[DB] Migraci\u00f3n aplicada: ${file}`)
+    } catch (err) {
+      // Si el error es de columna/tabla ya existente, lo ignoramos y
+      // marcamos la migraci\u00f3n como aplicada para no volver a intentarla.
+      // Esto ocurre cuando una migraci\u00f3n corri\u00f3 parcialmente y crash\u00f3
+      // antes de registrarse en _migrations.
+      const ignorable = [
+        'duplicate column name',
+        'table',
+        'already exists',
+      ]
+      const esIgnorable = ignorable.some(msg => err.message.toLowerCase().includes(msg))
+
+      if (esIgnorable) {
+        console.warn(`[DB] Migraci\u00f3n "${file}" ya parcialmente aplicada, marcando como hecha. (${err.message})`)
+      } else {
+        // Error real (sintaxis, constraint, etc.) -> propagar
+        throw err
+      }
+    }
+
+    // Registrar como aplicada en ambos casos (\u00e9xito o ignorable)
+    db.prepare('INSERT OR IGNORE INTO _migrations (name) VALUES (?)').run(file)
   }
 }
 
