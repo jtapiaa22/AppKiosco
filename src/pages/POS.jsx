@@ -3,13 +3,15 @@ import BuscadorProducto from '@/components/pos/BuscadorProducto'
 import Carrito from '@/components/pos/Carrito'
 import ModalCobro from '@/components/pos/ModalCobro'
 import ModalProductoNuevo from '@/components/pos/ModalProductoNuevo'
-import { usePosStore } from '@/store/posStore'
+import { usePosStore, useTotalCarrito } from '@/store/posStore'
 
 export default function POS() {
   const [modalCobro, setModalCobro] = useState(false)
   const [productoNuevo, setProductoNuevo] = useState(null)
-  const { carrito, limpiarCarrito, getTotal } = usePosStore()
-  const tieneItems = carrito.length > 0
+  const carrito       = usePosStore(s => s.carrito)
+  const limpiarCarrito = usePosStore(s => s.limpiarCarrito)
+  const total         = useTotalCarrito() // selector reactivo → re-render solo cuando cambia el total
+  const tieneItems    = carrito.length > 0
 
   return (
     <div className="flex h-full bg-gray-950">
@@ -68,7 +70,7 @@ export default function POS() {
                        disabled:opacity-30 disabled:cursor-not-allowed
                        active:scale-95 shadow-lg shadow-emerald-900/30"
           >
-            {tieneItems ? `Cobrar $${getTotal().toLocaleString('es-AR')}` : 'Cobrar'}
+            {tieneItems ? `Cobrar $${total.toLocaleString('es-AR')}` : 'Cobrar'}
           </button>
 
           {tieneItems && (
