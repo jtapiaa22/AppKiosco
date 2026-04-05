@@ -25,8 +25,8 @@ export const useCajaStore = create((set, get) => ({
     set({ error: null })
     try {
       const res = await dbRun(
-        `INSERT INTO cajas (estado, total_efectivo, total_transferencias, total_fiados, cant_ventas, abierta_en)
-         VALUES ('abierta', 0, 0, 0, 0, datetime('now'))`,
+        `INSERT INTO cajas (fecha, estado, total_efectivo, total_transferencias, total_fiados, cant_ventas, abierta_en)
+         VALUES (date('now'), 'abierta', 0, 0, 0, 0, datetime('now'))`,
         []
       )
       const rows = await dbQuery('SELECT * FROM cajas WHERE id = ?', [res.lastInsertRowid])
