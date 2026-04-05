@@ -44,6 +44,8 @@ function agruparPorDia(cajas) {
         }),
         { efectivo: 0, transferencias: 0, fiados: 0, ventas: 0 }
       )
+      // cobradoReal = efectivo + transferencias (excluye fiados, que todavía no ingresaron)
+      totales.cobradoReal = totales.efectivo + totales.transferencias
       return { fecha, sesiones, totales }
     })
 }
@@ -182,8 +184,7 @@ function PanelCerrada({ abrirCaja }) {
           {!cargandoHist && dias.length > 0 && (
             <div className="divide-y divide-gray-800/60">
               {dias.map(({ fecha, sesiones, totales }) => {
-                const isDiaOpen   = diaExpandido === fecha
-                const totalDia    = totales.efectivo + totales.transferencias
+                const isDiaOpen = diaExpandido === fecha
 
                 return (
                   <div key={fecha}>
@@ -211,10 +212,10 @@ function PanelCerrada({ abrirCaja }) {
                         </p>
                       </div>
 
-                      {/* Total del día */}
+                      {/* Total cobrado del día (sin fiados) */}
                       <div className="text-right flex-shrink-0">
-                        <p className="font-mono font-bold text-emerald-400">{fmt(totalDia)}</p>
-                        <p className="text-xs text-gray-600 mt-0.5">total día</p>
+                        <p className="font-mono font-bold text-emerald-400">{fmt(totales.cobradoReal)}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">cobrado</p>
                       </div>
 
                       <span className={`text-gray-500 text-lg transition-transform duration-200
@@ -225,12 +226,19 @@ function PanelCerrada({ abrirCaja }) {
                     {isDiaOpen && (
                       <div className="bg-gray-950/50 border-t border-gray-800/50">
 
-                        {/* Tarjetas resumen del día */}
-                        <div className="px-5 pt-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {/* Tarjetas resumen del día — 5 tarjetas en 2 filas */}
+                        <div className="px-5 pt-4 pb-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
                           <MiniTarjeta label="💵 Efectivo"       valor={fmt(totales.efectivo)}       color="emerald" />
                           <MiniTarjeta label="📱 Transferencias" valor={fmt(totales.transferencias)} color="sky"     />
                           <MiniTarjeta label="📝 Fiados"         valor={fmt(totales.fiados)}         color="amber"   />
                           <MiniTarjeta label="🛒 Ventas"         valor={totales.ventas}              color="violet"  />
+                          {/* Total cobrado real del día: efectivo + transferencias, SIN fiados */}
+                          <MiniTarjeta
+                            label="💰 Cobrado (sin fiados)"
+                            valor={fmt(totales.cobradoReal)}
+                            color="emerald"
+                            destacado
+                          />
                         </div>
 
                         {/* Separador + label sesiones */}
@@ -246,7 +254,7 @@ function PanelCerrada({ abrirCaja }) {
                         <div className="divide-y divide-gray-800/40 pb-2">
                           {sesiones.map((ses, idx) => {
                             const isSesOpen    = sesExpandida === ses.id
-                            const totalSes     = (ses.total_efectivo ?? 0) + (ses.total_transferencias ?? 0)
+                            const sesCobrado   = (ses.total_efectivo ?? 0) + (ses.total_transferencias ?? 0)
                             const ventasSes    = ventasCaja[ses.id] ?? []
 
                             return (
@@ -278,16 +286,32 @@ function PanelCerrada({ abrirCaja }) {
                                   </div>
 
                                   <div className="text-right flex-shrink-0">
-                                    <p className="font-mono text-sm font-semibold text-white">{fmt(totalSes)}</p>
+                                    <p className="font-mono text-sm font-semibold text-white">{fmt(sesCobrado)}</p>
+                                    <p className="text-xs text-gray-600 mt-0.5">sin fiados</p>
                                   </div>
 
                                   <span className={`text-gray-600 text-sm transition-transform duration-200
                                                     ${ isSesOpen ? 'rotate-90' : '' }`}>›</span>
                                 </button>
 
-                                {/* Detalle de ventas de la sesión */}
+                                {/* Detalle expandido de la sesión */}
                                 {isSesOpen && (
-                                  <div className="px-6 pb-4 pt-1">
+                                  <div className="px-6 pb-4 pt-2 space-y-3">
+
+                                    {/* Mini-resumen de la sesión */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                      <MiniTarjeta label="💵 Efectivo"       valor={fmt(ses.total_efectivo)}       color="emerald" />
+                                      <MiniTarjeta label="📱 Transf."        valor={fmt(ses.total_transferencias)} color="sky"     />
+                                      <MiniTarjeta label="📝 Fiados"         valor={fmt(ses.total_fiados)}         color="amber"   />
+                                      <MiniTarjeta
+                                        label="💰 Cobrado"
+                                        valor={fmt(sesCobrado)}
+                                        color="emerald"
+                                        destacado
+                                      />
+                                    </div>
+
+                                    {/* Ventas de la sesión */}
                                     {cargandoCajaId === ses.id ? (
                                       <div className="flex items-center gap-2 py-3 text-xs text-gray-500">
                                         <div className="w-3 h-3 border border-sky-500 border-t-transparent rounded-full animate-spin" />
@@ -416,7 +440,7 @@ function PanelAbierta({ caja, cerrarCaja, refrescarCaja }) {
           </div>
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl
                           px-4 py-3 flex justify-between items-center">
-            <span className="text-sm text-gray-400">Total cobrado en la sesión</span>
+            <span className="text-sm text-gray-400">💰 Cobrado en la sesión</span>
             <span className="text-2xl font-bold font-mono text-emerald-400">{fmt(tot)}</span>
           </div>
           <p className="text-xs text-gray-600 text-center">Podés abrir una nueva caja cuando quieras.</p>
@@ -444,7 +468,7 @@ function PanelAbierta({ caja, cerrarCaja, refrescarCaja }) {
           </div>
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl
                           px-4 py-3 flex justify-between items-center">
-            <span className="text-sm text-gray-400">Total cobrado</span>
+            <span className="text-sm text-gray-400">💰 Cobrado (sin fiados)</span>
             <span className="text-2xl font-bold font-mono text-emerald-400">{fmt(totalCobrado)}</span>
           </div>
           <div className="flex gap-3">
@@ -500,7 +524,7 @@ function PanelAbierta({ caja, cerrarCaja, refrescarCaja }) {
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-2xl px-6 py-5
                         flex items-center justify-between">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Total cobrado esta sesión</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">💰 Cobrado esta sesión (sin fiados)</p>
           <p className="text-3xl font-bold font-mono text-white">{fmt(totalCobrado)}</p>
         </div>
         <HistorialVentas ventas={ventas} cargando={cargandoVentas} />
@@ -587,12 +611,23 @@ function Tarjeta({ emoji, label, valor, color }) {
   )
 }
 
-function MiniTarjeta({ label, valor, color }) {
-  const cls = { emerald: 'text-emerald-400 bg-emerald-500/5 border-emerald-500/15', sky: 'text-sky-400 bg-sky-500/5 border-sky-500/15', amber: 'text-amber-400 bg-amber-500/5 border-amber-500/15', violet: 'text-violet-400 bg-violet-500/5 border-violet-500/15' }
+/**
+ * MiniTarjeta — resumen compacto dentro del historial.
+ * `destacado` aplica un borde más pronunciado para distinguir el total cobrado real.
+ */
+function MiniTarjeta({ label, valor, color, destacado = false }) {
+  const cls = {
+    emerald: destacado
+      ? 'text-emerald-300 bg-emerald-500/10 border-emerald-400/40'
+      : 'text-emerald-400 bg-emerald-500/5 border-emerald-500/15',
+    sky:    'text-sky-400 bg-sky-500/5 border-sky-500/15',
+    amber:  'text-amber-400 bg-amber-500/5 border-amber-500/15',
+    violet: 'text-violet-400 bg-violet-500/5 border-violet-500/15',
+  }
   return (
     <div className={`rounded-xl border px-3 py-2.5 ${cls[color]}`}>
       <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="font-mono font-bold text-sm">{valor}</p>
+      <p className={`font-mono font-bold text-sm ${destacado ? 'text-base' : ''}`}>{valor}</p>
     </div>
   )
 }
