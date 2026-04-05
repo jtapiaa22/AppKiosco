@@ -28,9 +28,10 @@ export async function checkLicense() {
     const result = await window.api.license.validate()
     return result
   } catch (err) {
+    // Error real de IPC: no permitir acceso. El componente mostrara
+    // la pantalla de activacion con un mensaje de error de conexion.
     console.error('[License] Error al verificar:', err)
-    // Si falla la comunicación IPC, tratar como dev para no bloquear
-    return { dev: true, valid: true }
+    return { valid: false, reason: 'ipc_error' }
   }
 }
 
