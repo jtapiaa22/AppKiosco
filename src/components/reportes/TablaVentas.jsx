@@ -18,7 +18,7 @@ const BADGE = {
   fiado:         { label: 'Fiado',         cls: 'bg-amber-500/15 text-amber-400 border-amber-500/20' },
 }
 
-const fmt = n => `$${(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+const fmt = n => `$${(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
 
 export default function TablaVentas({ periodo }) {
   const { ventas, cargando, error, recargar, cargarItems } = useVentas(periodo)
@@ -96,7 +96,6 @@ export default function TablaVentas({ periodo }) {
                 })()
                 const isOpen = expandida === v.id
 
-                // Línea de identificación: cliente o quien transfirió
                 const identidad = v.cliente_nombre
                   ? v.cliente_nombre
                   : (v.tipo_pago === 'transferencia' || v.tipo_pago === 'combinado') && v.transferente
@@ -136,7 +135,6 @@ export default function TablaVentas({ periodo }) {
                       </td>
                     </tr>
 
-                    {/* Detalle expandido */}
                     {isOpen && (
                       <tr key={`${v.id}-detail`} className="bg-gray-900/80">
                         <td colSpan={6} className="px-5 py-4">
@@ -158,12 +156,9 @@ export default function TablaVentas({ periodo }) {
   )
 }
 
-// ─── Detalle expandido ───────────────────────────────────────────────────────
 function DetalleVenta({ venta: v, items }) {
   return (
     <div className="space-y-3">
-
-      {/* Ítems */}
       <div className="bg-gray-800/50 rounded-xl overflow-hidden">
         <div className="px-3 py-2 border-b border-gray-700/50">
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Productos</span>
@@ -174,8 +169,9 @@ function DetalleVenta({ venta: v, items }) {
               {items.map((item, i) => (
                 <div key={i} className="flex justify-between items-center px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs bg-gray-700 text-gray-400
-                                    px-1.5 py-0.5 rounded">{item.cantidad}×</span>
+                    <span className="font-mono text-xs bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">
+                      {item.cantidad}×
+                    </span>
                     <span className="text-xs text-gray-300">
                       {item.producto_nombre ?? 'Producto eliminado'}
                     </span>
@@ -187,32 +183,18 @@ function DetalleVenta({ venta: v, items }) {
         }
       </div>
 
-      {/* Info de pago */}
       <div className="flex flex-wrap gap-3">
-
-        {/* Quién transfirió */}
         {(v.tipo_pago === 'transferencia' || v.tipo_pago === 'combinado') && v.transferente && (
           <InfoChip icon="📱" label="Transfirió" value={v.transferente} color="sky" />
         )}
-
-        {/* Desglose combinado */}
         {v.tipo_pago === 'combinado' && (
           <>
-            <InfoChip icon="💵" label="Efectivo" value={fmt(v.monto_efectivo)} color="emerald" />
-            <InfoChip icon="📱" label="Transferencia" value={fmt(v.monto_transferencia)} color="sky" />
+            <InfoChip icon="💵" label="Efectivo"       value={fmt(v.monto_efectivo)}       color="emerald" />
+            <InfoChip icon="📱" label="Transferencia"  value={fmt(v.monto_transferencia)}  color="sky"     />
           </>
         )}
-
-        {/* Nota */}
-        {v.nota && (
-          <InfoChip icon="📝" label="Nota" value={v.nota} color="gray" />
-        )}
-
-        {/* Cliente (si tiene) */}
-        {v.cliente_nombre && (
-          <InfoChip icon="👤" label="Cliente" value={v.cliente_nombre} color="violet" />
-        )}
-
+        {v.nota          && <InfoChip icon="📝" label="Nota"    value={v.nota}            color="gray"   />}
+        {v.cliente_nombre && <InfoChip icon="👤" label="Cliente" value={v.cliente_nombre} color="violet" />}
       </div>
     </div>
   )
