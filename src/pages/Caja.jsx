@@ -1,7 +1,8 @@
 /**
  * Caja.jsx
- * - Cerrada: botón abrir + historial de cajas anteriores
- * - Abierta:  tarjetas en tiempo real + historial de ventas del día + cierre
+ * - Cerrada: botón abrir + historial de cajas agrupado por DÍA
+ *     → cada día muestra sus sesiones (cajas) y el total acumulado del día
+ * - Abierta: tarjetas en tiempo real + historial de ventas del día + cierre
  */
 import { useEffect, useState, useCallback } from 'react'
 import { useCajaStore } from '@/store/cajaStore'
@@ -9,9 +10,43 @@ import { useVentas } from '@/hooks/useVentas'
 import { dbQuery } from '@/services/database'
 import toast from 'react-hot-toast'
 
-const fmt    = n  => `$${(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
-const fmtHora = s => { try { return new Date(s).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) } catch { return '--:--' } }
-const fmtFecha = s => { try { return new Date(s).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) } catch { return s } }
+const fmt      = n => `$${(n ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+const fmtHora  = s => { try { return new Date(s).toLocaleTimeString('es-AR',  { hour: '2-digit', minute: '2-digit' }) } catch { return '--:--' } }
+const fmtFecha = s => {
+  try {
+    // s puede ser 'YYYY-MM-DD' — parseamos con mediodía para evitar desfase UTC
+    const d = new Date(s + 'T12:00:00')
+    return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  } catch { return s }
+}
+
+/**
+ * Agrupa un array de cajas por su campo `fecha` (YYYY-MM-DD).
+ * Retorna un array de objetos: { fecha, cajas[], totales }
+ * ordenado del más reciente al más antiguo.
+ */
+function agruparPorDia(cajas) {
+  const mapa = {}
+  for (const c of cajas) {
+    const key = c.fecha
+    if (!mapa[key]) mapa[key] = []
+    mapa[key].push(c)
+  }
+  return Object.entries(mapa)
+    .sort(([a], [b]) => b.localeCompare(a))   // desc por fecha string YYYY-MM-DD
+    .map(([fecha, sesiones]) => {
+      const totales = sesiones.reduce(
+        (acc, s) => ({
+          efectivo:       acc.efectivo       + (s.total_efectivo       ?? 0),
+          transferencias: acc.transferencias + (s.total_transferencias ?? 0),
+          fiados:         acc.fiados         + (s.total_fiados         ?? 0),
+          ventas:         acc.ventas         + (s.cant_ventas          ?? 0),
+        }),
+        { efectivo: 0, transferencias: 0, fiados: 0, ventas: 0 }
+      )
+      return { fecha, sesiones, totales }
+    })
+}
 
 export default function Caja() {
   const { caja, estado, cargarCaja, abrirCaja, cerrarCaja, refrescarCaja } = useCajaStore()
@@ -33,22 +68,22 @@ export default function Caja() {
 //  PANEL CERRADA
 // ══════════════════════════════════════════════════════════════════
 function PanelCerrada({ abrirCaja }) {
-  const [abriendo, setAbriendo] = useState(false)
-  const [historial, setHistorial] = useState([])
-  const [cargandoHist, setCargandoHist] = useState(true)
-  const [expandida, setExpandida] = useState(null)   // id caja expandida
-  const [ventasCaja, setVentasCaja] = useState({})   // { [cajaId]: ventas[] }
+  const [abriendo,      setAbriendo]      = useState(false)
+  const [dias,          setDias]          = useState([])     // días agrupados
+  const [cargandoHist,  setCargandoHist]  = useState(true)
+  const [diaExpandido,  setDiaExpandido]  = useState(null)   // 'YYYY-MM-DD'
+  const [sesExpandida,  setSesExpandida]  = useState(null)   // cajaId de sesión expandida
+  const [ventasCaja,    setVentasCaja]    = useState({})     // { [cajaId]: ventas[] }
   const [cargandoCajaId, setCargandoCajaId] = useState(null)
 
-  // Cargar historial al montar
   useEffect(() => {
     async function cargar() {
       setCargandoHist(true)
       try {
         const rows = await dbQuery(
-          `SELECT * FROM cajas WHERE estado = 'cerrada' ORDER BY id DESC LIMIT 50`
+          `SELECT * FROM cajas WHERE estado = 'cerrada' ORDER BY id DESC LIMIT 200`
         )
-        setHistorial(rows)
+        setDias(agruparPorDia(rows))
       } catch {}
       setCargandoHist(false)
     }
@@ -59,26 +94,33 @@ function PanelCerrada({ abrirCaja }) {
     setAbriendo(true)
     const res = await abrirCaja()
     setAbriendo(false)
-    if (res.ok) toast.success('\u00a1Caja abierta!')
+    if (res.ok) toast.success('¡Caja abierta!')
     else toast.error('No se pudo abrir la caja')
   }
 
-  async function toggleCaja(id) {
-    if (expandida === id) { setExpandida(null); return }
-    setExpandida(id)
-    if (!ventasCaja[id]) {
-      setCargandoCajaId(id)
+  function toggleDia(fecha) {
+    setDiaExpandido(prev => prev === fecha ? null : fecha)
+    setSesExpandida(null)   // colapsar sesión al cambiar de día
+  }
+
+  async function toggleSesion(cajaId) {
+    if (sesExpandida === cajaId) { setSesExpandida(null); return }
+    setSesExpandida(cajaId)
+    if (!ventasCaja[cajaId]) {
+      setCargandoCajaId(cajaId)
       try {
         const rows = await dbQuery(
           `SELECT v.*, c.nombre AS cliente_nombre
            FROM ventas v
            LEFT JOIN clientes c ON c.id = v.cliente_id
-           WHERE date(v.vendido_en) = (SELECT fecha FROM cajas WHERE id = ?)
-           ORDER BY v.id ASC`,
-          [id]
+           WHERE v.vendido_en >= (SELECT abierta_en FROM cajas WHERE id = ?)
+             AND (  (SELECT cerrada_en FROM cajas WHERE id = ?) IS NULL
+                 OR v.vendido_en <= (SELECT cerrada_en FROM cajas WHERE id = ?))
+           ORDER BY v.vendido_en ASC`,
+          [cajaId, cajaId, cajaId]
         )
-        setVentasCaja(prev => ({ ...prev, [id]: rows }))
-      } catch { setVentasCaja(prev => ({ ...prev, [id]: [] })) }
+        setVentasCaja(prev => ({ ...prev, [cajaId]: rows }))
+      } catch { setVentasCaja(prev => ({ ...prev, [cajaId]: [] })) }
       setCargandoCajaId(null)
     }
   }
@@ -115,12 +157,12 @@ function PanelCerrada({ abrirCaja }) {
           </button>
         </div>
 
-        {/* Historial de cajas */}
+        {/* Historial agrupado por día */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-800">
             <h3 className="font-semibold text-white text-sm">📂 Historial de cajas</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              {cargandoHist ? 'Cargando...' : `${historial.length} caja${historial.length !== 1 ? 's' : ''} cerrada${historial.length !== 1 ? 's' : ''}`}
+              {cargandoHist ? 'Cargando...' : `${dias.length} día${dias.length !== 1 ? 's' : ''} registrado${dias.length !== 1 ? 's' : ''}`}
             </p>
           </div>
 
@@ -130,120 +172,142 @@ function PanelCerrada({ abrirCaja }) {
             </div>
           )}
 
-          {!cargandoHist && historial.length === 0 && (
+          {!cargandoHist && dias.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-gray-600">
               <span className="text-3xl mb-2">📂</span>
               <p className="text-sm">Todavía no hay cajas registradas</p>
             </div>
           )}
 
-          {!cargandoHist && historial.length > 0 && (
+          {!cargandoHist && dias.length > 0 && (
             <div className="divide-y divide-gray-800/60">
-              {historial.map(c => {
-                const isOpen = expandida === c.id
-                const totalCobrado = (c.total_efectivo ?? 0) + (c.total_transferencias ?? 0)
-                const ventas = ventasCaja[c.id] ?? []
+              {dias.map(({ fecha, sesiones, totales }) => {
+                const isDiaOpen   = diaExpandido === fecha
+                const totalDia    = totales.efectivo + totales.transferencias
 
                 return (
-                  <div key={c.id}>
-                    {/* Fila de caja */}
+                  <div key={fecha}>
+
+                    {/* ── Fila de DÍA ── */}
                     <button
-                      onClick={() => toggleCaja(c.id)}
-                      className={`w-full px-5 py-4 flex items-center gap-4 text-left
-                                  transition-colors ${
-                                    isOpen ? 'bg-gray-800/60' : 'hover:bg-gray-800/30'
-                                  }`}
+                      onClick={() => toggleDia(fecha)}
+                      className={`w-full px-5 py-4 flex items-center gap-4 text-left transition-colors
+                                  ${ isDiaOpen ? 'bg-sky-900/10' : 'hover:bg-gray-800/30' }`}
                     >
-                      {/* Fecha */}
+                      {/* Ícono + fecha */}
+                      <div className="w-9 h-9 rounded-xl bg-gray-800 flex items-center justify-center
+                                      text-lg flex-shrink-0">
+                        📅
+                      </div>
+
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-white capitalize">
-                          {fmtFecha(c.abierta_en ?? c.fecha)}
+                        <p className="text-sm font-semibold text-white capitalize">
+                          {fmtFecha(fecha)}
                         </p>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {c.abierta_en ? fmtHora(c.abierta_en) : '?'}
-                          {' '}→{' '}
-                          {c.cerrada_en ? fmtHora(c.cerrada_en) : '?'}
+                          {sesiones.length} sesión{sesiones.length !== 1 ? 'es' : ''}
                           {' · '}
-                          {c.cant_ventas ?? 0} venta{c.cant_ventas !== 1 ? 's' : ''}
+                          {totales.ventas} venta{totales.ventas !== 1 ? 's' : ''}
                         </p>
                       </div>
 
-                      {/* Total */}
+                      {/* Total del día */}
                       <div className="text-right flex-shrink-0">
-                        <p className="font-mono font-bold text-emerald-400 text-base">{fmt(totalCobrado)}</p>
-                        <p className="text-xs text-gray-600 mt-0.5">cobrado</p>
+                        <p className="font-mono font-bold text-emerald-400">{fmt(totalDia)}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">total día</p>
                       </div>
 
-                      {/* Chevron */}
-                      <span className={`text-gray-500 text-lg transition-transform ${
-                        isOpen ? 'rotate-90' : ''
-                      }`}>›</span>
+                      <span className={`text-gray-500 text-lg transition-transform duration-200
+                                        ${ isDiaOpen ? 'rotate-90' : '' }`}>›</span>
                     </button>
 
-                    {/* Detalle expandido */}
-                    {isOpen && (
-                      <div className="bg-gray-950/60 px-5 py-4 border-t border-gray-800/50 space-y-4">
+                    {/* ── Contenido del DÍA expandido ── */}
+                    {isDiaOpen && (
+                      <div className="bg-gray-950/50 border-t border-gray-800/50">
 
-                        {/* Tarjetas mini */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <MiniTarjeta label="Efectivo"       valor={fmt(c.total_efectivo)}       color="emerald" />
-                          <MiniTarjeta label="Transferencias" valor={fmt(c.total_transferencias)} color="sky"     />
-                          <MiniTarjeta label="Fiados"         valor={fmt(c.total_fiados)}         color="amber"   />
-                          <MiniTarjeta label="Ventas"         valor={c.cant_ventas ?? 0}          color="violet"  />
+                        {/* Tarjetas resumen del día */}
+                        <div className="px-5 pt-4 pb-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <MiniTarjeta label="💵 Efectivo"       valor={fmt(totales.efectivo)}       color="emerald" />
+                          <MiniTarjeta label="📱 Transferencias" valor={fmt(totales.transferencias)} color="sky"     />
+                          <MiniTarjeta label="📝 Fiados"         valor={fmt(totales.fiados)}         color="amber"   />
+                          <MiniTarjeta label="🛒 Ventas"         valor={totales.ventas}              color="violet"  />
                         </div>
 
-                        {/* Ventas de esa caja */}
-                        {cargandoCajaId === c.id ? (
-                          <div className="flex items-center gap-2 py-2 text-xs text-gray-500">
-                            <div className="w-3 h-3 border border-sky-500 border-t-transparent rounded-full animate-spin" />
-                            Cargando ventas...
-                          </div>
-                        ) : ventas.length === 0 ? (
-                          <p className="text-xs text-gray-600 py-2">Sin ventas registradas en esta caja</p>
-                        ) : (
-                          <div className="rounded-xl overflow-hidden border border-gray-800">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="bg-gray-800/50 text-gray-500 uppercase tracking-wider">
-                                  <th className="px-3 py-2 text-left">#</th>
-                                  <th className="px-3 py-2 text-left">Hora</th>
-                                  <th className="px-3 py-2 text-left">Pago</th>
-                                  <th className="px-3 py-2 text-left">Cliente</th>
-                                  <th className="px-3 py-2 text-right">Total</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-800/50">
-                                {ventas.map(v => {
-                                  const badgeCls = {
-                                    efectivo:      'bg-emerald-500/15 text-emerald-400',
-                                    transferencia: 'bg-sky-500/15 text-sky-400',
-                                    combinado:     'bg-violet-500/15 text-violet-400',
-                                    fiado:         'bg-amber-500/15 text-amber-400',
-                                  }[v.tipo_pago] ?? 'bg-gray-700 text-gray-400'
-                                  return (
-                                    <tr key={v.id} className="hover:bg-gray-800/30">
-                                      <td className="px-3 py-2 font-mono text-gray-600">#{v.id}</td>
-                                      <td className="px-3 py-2 font-mono text-gray-400">{fmtHora(v.vendido_en)}</td>
-                                      <td className="px-3 py-2">
-                                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${badgeCls}`}>
-                                          {v.tipo_pago}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-500">
-                                        {v.cliente_nombre ?? <span className="text-gray-700">—</span>}
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-mono font-semibold text-white">
-                                        {fmt(v.total)}
-                                      </td>
-                                    </tr>
-                                  )
-                                })}
-                              </tbody>
-                            </table>
+                        {/* Separador + label sesiones */}
+                        {sesiones.length > 1 && (
+                          <div className="px-5 pb-2">
+                            <p className="text-xs text-gray-600 uppercase tracking-wider">
+                              Sesiones de caja
+                            </p>
                           </div>
                         )}
+
+                        {/* ── Sesiones del día ── */}
+                        <div className="divide-y divide-gray-800/40 pb-2">
+                          {sesiones.map((ses, idx) => {
+                            const isSesOpen    = sesExpandida === ses.id
+                            const totalSes     = (ses.total_efectivo ?? 0) + (ses.total_transferencias ?? 0)
+                            const ventasSes    = ventasCaja[ses.id] ?? []
+
+                            return (
+                              <div key={ses.id}>
+
+                                {/* Fila sesión */}
+                                <button
+                                  onClick={() => toggleSesion(ses.id)}
+                                  className={`w-full px-6 py-3 flex items-center gap-3 text-left
+                                              transition-colors
+                                              ${ isSesOpen ? 'bg-gray-800/60' : 'hover:bg-gray-800/20' }`}
+                                >
+                                  {/* Número sesión */}
+                                  <span className="w-6 h-6 rounded-lg bg-gray-700 text-gray-400
+                                                   text-xs font-bold flex items-center justify-center
+                                                   flex-shrink-0">
+                                    {idx + 1}
+                                  </span>
+
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium text-gray-300">
+                                      {ses.abierta_en ? fmtHora(ses.abierta_en) : '?'}
+                                      <span className="text-gray-600 mx-1">→</span>
+                                      {ses.cerrada_en ? fmtHora(ses.cerrada_en) : <span className="text-amber-400">abierta</span>}
+                                    </p>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                      {ses.cant_ventas ?? 0} venta{(ses.cant_ventas ?? 0) !== 1 ? 's' : ''}
+                                    </p>
+                                  </div>
+
+                                  <div className="text-right flex-shrink-0">
+                                    <p className="font-mono text-sm font-semibold text-white">{fmt(totalSes)}</p>
+                                  </div>
+
+                                  <span className={`text-gray-600 text-sm transition-transform duration-200
+                                                    ${ isSesOpen ? 'rotate-90' : '' }`}>›</span>
+                                </button>
+
+                                {/* Detalle de ventas de la sesión */}
+                                {isSesOpen && (
+                                  <div className="px-6 pb-4 pt-1">
+                                    {cargandoCajaId === ses.id ? (
+                                      <div className="flex items-center gap-2 py-3 text-xs text-gray-500">
+                                        <div className="w-3 h-3 border border-sky-500 border-t-transparent rounded-full animate-spin" />
+                                        Cargando ventas...
+                                      </div>
+                                    ) : ventasSes.length === 0 ? (
+                                      <p className="text-xs text-gray-600 py-2">Sin ventas en esta sesión</p>
+                                    ) : (
+                                      <TablaMiniVentas ventas={ventasSes} />
+                                    )}
+                                  </div>
+                                )}
+
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
+
                   </div>
                 )
               })}
@@ -252,6 +316,54 @@ function PanelCerrada({ abrirCaja }) {
         </div>
 
       </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TABLA MINI (ventas dentro de una sesión en el historial)
+// ══════════════════════════════════════════════════════════════════
+function TablaMiniVentas({ ventas }) {
+  const BADGE = {
+    efectivo:      'bg-emerald-500/15 text-emerald-400',
+    transferencia: 'bg-sky-500/15 text-sky-400',
+    combinado:     'bg-violet-500/15 text-violet-400',
+    fiado:         'bg-amber-500/15 text-amber-400',
+  }
+  return (
+    <div className="rounded-xl overflow-hidden border border-gray-800">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-gray-800/50 text-gray-500 uppercase tracking-wider">
+            <th className="px-3 py-2 text-left">#</th>
+            <th className="px-3 py-2 text-left">Hora</th>
+            <th className="px-3 py-2 text-left">Pago</th>
+            <th className="px-3 py-2 text-left">Cliente</th>
+            <th className="px-3 py-2 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-800/50">
+          {ventas.map(v => (
+            <tr key={v.id} className="hover:bg-gray-800/30 transition-colors">
+              <td className="px-3 py-2 font-mono text-gray-600">#{v.id}</td>
+              <td className="px-3 py-2 font-mono text-gray-400">
+                {(() => { try { return new Date(v.vendido_en).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) } catch { return '--:--' } })()}
+              </td>
+              <td className="px-3 py-2">
+                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${ BADGE[v.tipo_pago] ?? 'bg-gray-700 text-gray-400' }`}>
+                  {v.tipo_pago}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-gray-500">
+                {v.cliente_nombre ?? <span className="text-gray-700">—</span>}
+              </td>
+              <td className="px-3 py-2 text-right font-mono font-semibold text-white">
+                {fmt(v.total)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -304,7 +416,7 @@ function PanelAbierta({ caja, cerrarCaja, refrescarCaja }) {
           </div>
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl
                           px-4 py-3 flex justify-between items-center">
-            <span className="text-sm text-gray-400">Total cobrado</span>
+            <span className="text-sm text-gray-400">Total cobrado en la sesión</span>
             <span className="text-2xl font-bold font-mono text-emerald-400">{fmt(tot)}</span>
           </div>
           <p className="text-xs text-gray-600 text-center">Podés abrir una nueva caja cuando quieras.</p>
@@ -322,7 +434,7 @@ function PanelAbierta({ caja, cerrarCaja, refrescarCaja }) {
           <div className="text-center">
             <div className="text-4xl mb-2">⚠️</div>
             <h2 className="text-lg font-bold text-white">¿Cerrás la caja?</h2>
-            <p className="text-sm text-gray-500 mt-1">Resumen del día:</p>
+            <p className="text-sm text-gray-500 mt-1">Resumen de esta sesión:</p>
           </div>
           <div className="bg-gray-800 rounded-xl divide-y divide-gray-700">
             <Fila label="💵 Efectivo"       valor={fmt(caja.total_efectivo)} />
@@ -388,7 +500,7 @@ function PanelAbierta({ caja, cerrarCaja, refrescarCaja }) {
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-2xl px-6 py-5
                         flex items-center justify-between">
-          <p className="text-xs text-gray-500 uppercase tracking-wider">Total cobrado</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Total cobrado esta sesión</p>
           <p className="text-3xl font-bold font-mono text-white">{fmt(totalCobrado)}</p>
         </div>
         <HistorialVentas ventas={ventas} cargando={cargandoVentas} />
@@ -410,7 +522,7 @@ function HistorialVentas({ ventas, cargando }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-800">
-        <h3 className="font-semibold text-white text-sm">Ventas de esta caja</h3>
+        <h3 className="font-semibold text-white text-sm">Ventas de esta sesión</h3>
         <p className="text-xs text-gray-500 mt-0.5">
           {cargando ? 'Cargando...' : `${ventas.length} venta${ventas.length !== 1 ? 's' : ''}`}
         </p>
@@ -438,7 +550,9 @@ function HistorialVentas({ ventas, cargando }) {
               {ventas.map(v => (
                 <tr key={v.id} className="hover:bg-gray-800/40 transition-colors">
                   <td className="px-5 py-3 font-mono text-xs text-gray-600">#{v.id}</td>
-                  <td className="px-5 py-3 font-mono text-gray-300">{fmtHora(v.vendido_en)}</td>
+                  <td className="px-5 py-3 font-mono text-gray-300">
+                    {(() => { try { return new Date(v.vendido_en).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) } catch { return '--:--' } })()}
+                  </td>
                   <td className="px-5 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full
                                      text-xs font-medium border ${BADGE[v.tipo_pago] ?? 'bg-gray-700 text-gray-400 border-gray-600'}`}>
