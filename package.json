@@ -39,7 +39,7 @@
     "postcss": "^8.4.35"
   },
   "build": {
-    "appId": "com.tuempresa.kiosco",
+    "appId": "com.jtapia.kioscoapp",
     "productName": "KioscoApp",
     "directories": {
       "output": "dist-electron"
@@ -55,8 +55,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "database/**/*",
-      "node_modules/**/*"
+      "database/**/*"
     ]
   }
 }
