@@ -2,15 +2,26 @@
  * posStore.js — Estado global del Punto de Venta con Zustand
  *
  * Maneja: carrito, cliente seleccionado, y helpers de cálculo.
+ *
+ * NOTA sobre getTotal / getCantidadTotal:
+ *   Son funciones derivadas del estado. Usarlas así en un componente:
+ *
+ *     const total = usePosStore(s =>
+ *       s.carrito.reduce((sum, i) => sum + i.precio_venta * i.cantidad, 0)
+ *     )
+ *
+ *   De esa forma el componente sólo re-renderiza cuando cambia carrito.
+ *   Las versiones en el store quedan como helpers internos / para llamar
+ *   fuera de React (ej: en actions del propio store).
  */
 import { create } from 'zustand'
 
 export const usePosStore = create((set, get) => ({
-  // ── Estado ────────────────────────────────────────────────
+  // ── Estado ────────────────────────────────────────────
   carrito:            [],
   clienteSeleccionado: null,
 
-  // ── Carrito ───────────────────────────────────────────────
+  // ── Carrito ─────────────────────────────────────────
 
   /**
    * Agrega un producto al carrito. Si ya existe, incrementa cantidad.
@@ -68,12 +79,12 @@ export const usePosStore = create((set, get) => ({
    */
   limpiarCarrito: () => set({ carrito: [], clienteSeleccionado: null }),
 
-  // ── Cliente ───────────────────────────────────────────────
+  // ── Cliente ─────────────────────────────────────────
 
   setCliente: (cliente) => set({ clienteSeleccionado: cliente }),
   limpiarCliente: () => set({ clienteSeleccionado: null }),
 
-  // ── Cálculos ──────────────────────────────────────────────
+  // ── Cálculos (helpers internos — ver NOTA arriba para uso en React) ──
 
   getTotal: () =>
     get().carrito.reduce((sum, i) => sum + i.precio_venta * i.cantidad, 0),
@@ -81,3 +92,12 @@ export const usePosStore = create((set, get) => ({
   getCantidadTotal: () =>
     get().carrito.reduce((sum, i) => sum + i.cantidad, 0),
 }))
+
+// ── Selectores reactivos listos para usar en componentes ──────────────────
+// Uso: const total = useTotalCarrito()
+// El componente sólo re-renderiza cuando el total cambia.
+export const useTotalCarrito = () =>
+  usePosStore(s => s.carrito.reduce((sum, i) => sum + i.precio_venta * i.cantidad, 0))
+
+export const useCantidadTotalCarrito = () =>
+  usePosStore(s => s.carrito.reduce((sum, i) => sum + i.cantidad, 0))
