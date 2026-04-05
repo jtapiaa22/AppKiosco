@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { usePosStore } from '@/store/posStore'
 import { useVenta } from '@/hooks/useVenta'
-import { dbQuery, dbRun } from '@/services/database'
+import { dbQuery, dbRun, ahoraLocal } from '@/services/database'
 
 const TIPOS = [
   { id: 'efectivo',       label: 'Efectivo',       emoji: '\uD83D\uDCB5', color: 'emerald' },
@@ -23,13 +23,12 @@ export default function ModalCobro({ onClose, onExito }) {
   const [tipo, setTipo]                   = useState('efectivo')
   const [efectivo, setEfectivo]           = useState('')
   const [transferencia, setTransferencia] = useState('')
-  const [transferente, setTransferente]   = useState('')   // ← nuevo
+  const [transferente, setTransferente]   = useState('')
   const [clientes, setClientes]           = useState([])
   const [busqCliente, setBusqCliente]     = useState('')
   const [mostrarClientes, setMostrarClientes] = useState(false)
   const [exito, setExito]                 = useState(null)
 
-  // ─ Estado para crear cliente nuevo ──────────────────────────────────
   const [modoCrear, setModoCrear]           = useState(false)
   const [nuevoNombre, setNuevoNombre]       = useState('')
   const [nuevoTelefono, setNuevoTelefono]   = useState('')
@@ -52,7 +51,6 @@ export default function ModalCobro({ onClose, onExito }) {
   useEffect(() => {
     if (tipo === 'efectivo') setEfectivo(total.toString())
     if (tipo === 'transferencia') setTransferencia(total.toString())
-    // Limpiar transferente al cambiar de método
     if (tipo !== 'transferencia' && tipo !== 'combinado') setTransferente('')
   }, [tipo, total])
 
@@ -62,17 +60,17 @@ export default function ModalCobro({ onClose, onExito }) {
       ? Math.max(0, (parseFloat(efectivo) || 0) + (parseFloat(transferencia) || 0) - total)
       : 0
 
-  // ─ Crear cliente nuevo inline ─────────────────────────────────────────
   async function handleCrearCliente() {
     const nombre = nuevoNombre.trim()
     if (!nombre) { setErrorCrear('El nombre es obligatorio'); return }
     setCreandoCliente(true)
     setErrorCrear(null)
     try {
+      // Usamos ahoraLocal() en vez de datetime('now') UTC
       const res = await dbRun(
         `INSERT INTO clientes (nombre, telefono, deuda_total, activo, creado_en)
-         VALUES (?, ?, 0, 1, datetime('now'))`,
-        [nombre, nuevoTelefono.trim() || null]
+         VALUES (?, ?, 0, 1, ?)`,
+        [nombre, nuevoTelefono.trim() || null, ahoraLocal()]
       )
       const nuevoCliente = { id: res.lastInsertRowid, nombre, telefono: nuevoTelefono.trim() || null, deuda_total: 0 }
       setCliente(nuevoCliente)
@@ -101,7 +99,6 @@ export default function ModalCobro({ onClose, onExito }) {
     }
   }
 
-  // ─ Pantalla de éxito ──────────────────────────────────────────────────
   if (exito) {
     return (
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
@@ -122,7 +119,6 @@ export default function ModalCobro({ onClose, onExito }) {
     )
   }
 
-  // ─ Helper: campo nombre transferente ─────────────────────────────────
   const CampoTransferente = (
     <div>
       <label className="text-xs text-gray-500 mb-1.5 block uppercase tracking-wider">
@@ -146,7 +142,6 @@ export default function ModalCobro({ onClose, onExito }) {
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl flex flex-col gap-5">
 
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white">Cobrar</h2>
@@ -158,7 +153,6 @@ export default function ModalCobro({ onClose, onExito }) {
           </button>
         </div>
 
-        {/* Tipo de pago */}
         <div>
           <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Forma de pago</p>
           <div className="grid grid-cols-4 gap-2">
@@ -173,7 +167,6 @@ export default function ModalCobro({ onClose, onExito }) {
           </div>
         </div>
 
-        {/* ─ EFECTIVO ───────────────────────────────────────────────── */}
         {tipo === 'efectivo' && (
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Recibido</p>
@@ -190,7 +183,6 @@ export default function ModalCobro({ onClose, onExito }) {
           </div>
         )}
 
-        {/* ─ TRANSFERENCIA ───────────────────────────────────────── */}
         {tipo === 'transferencia' && (
           <div className="space-y-3">
             <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/20 text-center">
@@ -201,7 +193,6 @@ export default function ModalCobro({ onClose, onExito }) {
           </div>
         )}
 
-        {/* ─ COMBINADO ─────────────────────────────────────────────── */}
         {tipo === 'combinado' && (
           <div className="space-y-3">
             <div>
@@ -227,7 +218,6 @@ export default function ModalCobro({ onClose, onExito }) {
           </div>
         )}
 
-        {/* ─ FIADO ──────────────────────────────────────────────────── */}
         {tipo === 'fiado' && (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 uppercase tracking-wider">Cliente</p>
@@ -325,7 +315,6 @@ export default function ModalCobro({ onClose, onExito }) {
           </div>
         )}
 
-        {/* Botón confirmar */}
         <button
           onClick={handleConfirmar}
           disabled={procesando || (tipo === 'fiado' && !clienteSeleccionado)}

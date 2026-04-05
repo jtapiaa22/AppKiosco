@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { dbQuery, dbRun } from '@/services/database'
+import { dbQuery, dbRun, ahoraLocal, hoyLocal } from '@/services/database'
 
 export const useCajaStore = create((set, get) => ({
   caja:   null,
@@ -24,10 +24,12 @@ export const useCajaStore = create((set, get) => ({
   abrirCaja: async () => {
     set({ error: null })
     try {
+      // Usamos hoyLocal() y ahoraLocal() para evitar que SQLite
+      // guarde en UTC y desplace la fecha al día siguiente (ej: 22:00 AR = 01:00 UTC)
       const res = await dbRun(
         `INSERT INTO cajas (fecha, estado, total_efectivo, total_transferencias, total_fiados, cant_ventas, abierta_en)
-         VALUES (date('now'), 'abierta', 0, 0, 0, 0, datetime('now'))`,
-        []
+         VALUES (?, 'abierta', 0, 0, 0, 0, ?)`,
+        [hoyLocal(), ahoraLocal()]
       )
       const rows = await dbQuery('SELECT * FROM cajas WHERE id = ?', [res.lastInsertRowid])
       set({ caja: rows[0], estado: 'abierta' })
@@ -44,8 +46,8 @@ export const useCajaStore = create((set, get) => ({
     set({ error: null })
     try {
       await dbRun(
-        `UPDATE cajas SET estado = 'cerrada', cerrada_en = datetime('now') WHERE id = ?`,
-        [caja.id]
+        `UPDATE cajas SET estado = 'cerrada', cerrada_en = ? WHERE id = ?`,
+        [ahoraLocal(), caja.id]
       )
       const rows = await dbQuery('SELECT * FROM cajas WHERE id = ?', [caja.id])
       set({ caja: null, estado: 'cerrada' })

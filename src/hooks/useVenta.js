@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { dbRun, dbQuery } from '@/services/database'
+import { dbRun, dbQuery, ahoraLocal } from '@/services/database'
 import { usePosStore } from '@/store/posStore'
 
 export function useVenta() {
@@ -11,7 +11,7 @@ export function useVenta() {
     tipoPago,
     montoEfectivo       = 0,
     montoTransferencia  = 0,
-    nombreTransferente  = null,   // ← nuevo
+    nombreTransferente  = null,
   }) {
     if (carrito.length === 0) return { ok: false, error: 'Carrito vacío' }
     const esFiado = tipoPago === 'fiado'
@@ -20,25 +20,24 @@ export function useVenta() {
     setProcesando(true)
     try {
       const total = getTotal()
+      const ahora = ahoraLocal()   // ← hora local AR, no UTC
 
-      // 1. Insertar venta — se agrega nombre_transferente a la columna notas
-      //    (no requiere migrar el esquema: lo guardamos en una columna de texto
-      //    que ya existe o agregamos si no existe)
       await dbRun(
         `CREATE TABLE IF NOT EXISTS ventas_transferentes (
            venta_id         INTEGER PRIMARY KEY,
            nombre_transferente TEXT NOT NULL
          )`
-      ).catch(() => {}) // si ya existe, ignorar
+      ).catch(() => {})
 
+      // Pasamos vendido_en explícitamente con la hora local
+      // para evitar que SQLite use DEFAULT datetime('now') en UTC
       const venta = await dbRun(
-        `INSERT INTO ventas (cliente_id, total, tipo_pago, monto_efectivo, monto_transferencia, es_fiado)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [clienteSeleccionado?.id ?? null, total, tipoPago, montoEfectivo, montoTransferencia, esFiado ? 1 : 0]
+        `INSERT INTO ventas (cliente_id, total, tipo_pago, monto_efectivo, monto_transferencia, es_fiado, vendido_en)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [clienteSeleccionado?.id ?? null, total, tipoPago, montoEfectivo, montoTransferencia, esFiado ? 1 : 0, ahora]
       )
       const ventaId = venta.lastInsertRowid
 
-      // Guardar transferente si se ingresó
       if (nombreTransferente && (tipoPago === 'transferencia' || tipoPago === 'combinado')) {
         await dbRun(
           `INSERT OR REPLACE INTO ventas_transferentes (venta_id, nombre_transferente) VALUES (?, ?)`,
@@ -46,7 +45,6 @@ export function useVenta() {
         )
       }
 
-      // 2. Insertar items y descontar stock
       for (const item of carrito) {
         await dbRun(
           `INSERT INTO venta_items (venta_id, producto_id, cantidad, precio_unitario, subtotal)
@@ -59,7 +57,6 @@ export function useVenta() {
         )
       }
 
-      // 3. Registrar fiado si corresponde
       if (esFiado) {
         await dbRun(
           `INSERT INTO fiados (cliente_id, venta_id, monto, tipo, nota)
@@ -72,7 +69,6 @@ export function useVenta() {
         )
       }
 
-      // 4. Actualizar caja abierta
       await dbRun(
         `UPDATE cajas SET
            total_efectivo       = total_efectivo + ?,

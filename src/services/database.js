@@ -56,3 +56,35 @@ export async function dbRun(sql, params = []) {
   }
   return mockDB.run(sql, params)
 }
+
+/**
+ * Devuelve el datetime local actual en formato SQLite: 'YYYY-MM-DD HH:MM:SS'
+ *
+ * IMPORTANTE: SQLite usa datetime('now') que retorna UTC.
+ * En Argentina (UTC-3) esto causa que ventas hechas luego de las 21:00
+ * queden guardadas con la fecha del día siguiente.
+ *
+ * Solución: siempre pasar la hora local desde JS como parámetro
+ * en lugar de usar datetime('now') dentro de la query SQL.
+ *
+ * Uso:
+ *   dbRun(`INSERT INTO ventas (..., vendido_en) VALUES (?, ?)`, [..., ahoraLocal()])
+ */
+export function ahoraLocal() {
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  return (
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+  )
+}
+
+/**
+ * Devuelve solo la fecha local en formato 'YYYY-MM-DD'
+ * (para columnas tipo `date`, como `cajas.fecha`).
+ */
+export function hoyLocal() {
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
