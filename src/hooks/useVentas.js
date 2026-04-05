@@ -1,8 +1,11 @@
 /**
- * useVentas.js — Hook para cargar el historial de ventas con sus ítems.
+ * useVentas.js
  *
- * Permite filtrar por período y cargar los ítems de una venta individual
- * (detalle expandible en la tabla).
+ * periodo puede ser:
+ *  - 'hoy'              → ventas del día actual
+ *  - 'semana'           → últimos 7 días
+ *  - 'mes'              → últimos 30 días
+ *  - 'fecha:YYYY-MM-DD' → un día exacto (para el buscador de fecha)
  */
 import { useState, useEffect, useCallback } from 'react'
 import { dbQuery } from '@/services/database'
@@ -16,11 +19,20 @@ export function useVentas(periodo = 'hoy') {
     setCargando(true)
     setError(null)
     try {
-      const filtro = periodo === 'hoy'
-        ? `date(v.vendido_en) = date('now')`
-        : periodo === 'semana'
-          ? `v.vendido_en >= datetime('now', '-7 days')`
-          : `v.vendido_en >= datetime('now', '-30 days')`
+      let filtro, params
+
+      if (periodo.startsWith('fecha:')) {
+        const fecha = periodo.slice(6)  // 'YYYY-MM-DD'
+        filtro = `date(v.vendido_en) = ?`
+        params = [fecha]
+      } else {
+        params = []
+        filtro = periodo === 'hoy'
+          ? `date(v.vendido_en) = date('now')`
+          : periodo === 'semana'
+            ? `v.vendido_en >= datetime('now', '-7 days')`
+            : `v.vendido_en >= datetime('now', '-30 days')`
+      }
 
       const rows = await dbQuery(
         `SELECT
@@ -31,12 +43,14 @@ export function useVentas(periodo = 'hoy') {
            v.monto_transferencia,
            v.es_fiado,
            v.vendido_en,
-           c.nombre AS cliente_nombre
+           c.nombre  AS cliente_nombre,
+           vt.nombre_transferente AS transferente
          FROM ventas v
-         LEFT JOIN clientes c ON c.id = v.cliente_id
+         LEFT JOIN clientes c  ON c.id  = v.cliente_id
+         LEFT JOIN ventas_transferentes vt ON vt.venta_id = v.id
          WHERE ${filtro}
          ORDER BY v.vendido_en DESC`,
-        []
+        params
       )
       setVentas(rows)
     } catch (e) {
@@ -48,7 +62,6 @@ export function useVentas(periodo = 'hoy') {
 
   useEffect(() => { cargar() }, [cargar])
 
-  // Carga ítems de una venta puntual
   async function cargarItems(ventaId) {
     try {
       return await dbQuery(
@@ -62,9 +75,7 @@ export function useVentas(periodo = 'hoy') {
          WHERE vi.venta_id = ?`,
         [ventaId]
       )
-    } catch {
-      return []
-    }
+    } catch { return [] }
   }
 
   return { ventas, cargando, error, recargar: cargar, cargarItems }
