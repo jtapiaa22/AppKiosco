@@ -23,24 +23,36 @@ const mockDB = {
   },
 }
 
-// ── API pública ──────────────────────────────────────────────────────────
+// ── API pública ────────────────────────────────────────────
 
 /**
  * Ejecuta un SELECT y devuelve array de filas.
+ * @throws {Error} Si la comunicación IPC falla en el proceso principal.
  */
 export async function dbQuery(sql, params = []) {
   if (isElectron()) {
-    return window.electronAPI.dbQuery(sql, params)
+    try {
+      return await window.electronAPI.dbQuery(sql, params)
+    } catch (err) {
+      console.error('[DB] Error en dbQuery:', sql, err)
+      throw new Error(`Error al consultar la base de datos: ${err.message}`)
+    }
   }
   return mockDB.query(sql, params)
 }
 
 /**
  * Ejecuta INSERT / UPDATE / DELETE.
+ * @throws {Error} Si la comunicación IPC falla en el proceso principal.
  */
 export async function dbRun(sql, params = []) {
   if (isElectron()) {
-    return window.electronAPI.dbRun(sql, params)
+    try {
+      return await window.electronAPI.dbRun(sql, params)
+    } catch (err) {
+      console.error('[DB] Error en dbRun:', sql, err)
+      throw new Error(`Error al ejecutar operación en la base de datos: ${err.message}`)
+    }
   }
   return mockDB.run(sql, params)
 }
