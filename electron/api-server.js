@@ -14,21 +14,20 @@
  *   GET  /api/scan/pending         → la PC consulta si hay código esperando
  *   DELETE /api/scan/pending       → la PC consume/limpia el código
  *
- *   GET  /api/imagenes?q=...       → busca imágenes via DuckDuckGo (sin CORS)
+ *   GET  /api/imagenes?q=...       → busca imágenes via Bing (sin CORS)
  */
 
-const http = require('http')
+const http  = require('http')
 const https = require('https')
-const fs   = require('fs')
-const path = require('path')
-const os   = require('os')
+const fs    = require('fs')
+const path  = require('path')
+const os    = require('os')
 
 const PORT = 3001
 
-// Estado en memoria para el flujo de escaneo
-let pendingScan = null  // { codigo, timestamp }
+let pendingScan = null
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────
 
 function json(res, status, data) {
   const body = JSON.stringify(data)
@@ -63,17 +62,21 @@ function getLocalIP() {
   return 'localhost'
 }
 
-// Fetch simple con Node https — devuelve string
 function fetchText(url, headers = {}) {
   return new Promise((resolve, reject) => {
     const options = {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         ...headers,
       },
     }
     https.get(url, options, (res) => {
+      // Seguir redirects
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return fetchText(res.headers.location, headers).then(resolve).catch(reject)
+      }
       let body = ''
       res.on('data', chunk => (body += chunk))
       res.on('end', () => resolve(body))
@@ -81,31 +84,58 @@ function fetchText(url, headers = {}) {
   })
 }
 
-async function buscarImagenesDDG(query) {
-  const q = encodeURIComponent(query)
+/**
+ * Busca imágenes usando Bing Images (scraping del HTML).
+ * Extrae URLs de las miniaturas y las imágenes originales del markup.
+ */
+async function buscarImagenesBing(query) {
+  const q   = encodeURIComponent(query)
+  const url = `https://www.bing.com/images/search?q=${q}&form=HDRSC2&first=1&tsc=ImageHoverTitle`
+  const html = await fetchText(url, { Referer: 'https://www.bing.com/' })
 
-  // Paso 1: obtener token vqd
-  const tokenHtml = await fetchText(`https://duckduckgo.com/?q=${q}&iax=images&ia=images`)
-  const vqdMatch = tokenHtml.match(/vqd=['"](\d-[^'"]+)['"]/) ||
-                   tokenHtml.match(/vqd=(\d-[\w-]+)/)
-  if (!vqdMatch) throw new Error('No se pudo obtener token vqd de DuckDuckGo')
-  const vqd = vqdMatch[1]
+  const resultados = []
 
-  // Paso 2: buscar imágenes
-  const apiUrl = `https://duckduckgo.com/i.js?q=${q}&vqd=${encodeURIComponent(vqd)}&f=,,,,,&p=1&v7exp=a`
-  const imgJson = await fetchText(apiUrl, { Referer: 'https://duckduckgo.com/' })
-  const parsed  = JSON.parse(imgJson)
+  // Bing embebe los datos de imagen en atributos m (JSON) dentro de los .iusc
+  // Formato: <a class="iusc" m='{"murl":"...","turl":"...","t":"..."}' ...>
+  const regex = /class="iusc"[^>]+m="([^"]+)"/g
+  let match
+  while ((match = regex.exec(html)) !== null && resultados.length < 24) {
+    try {
+      // El atributo está HTML-encoded
+      const decoded = match[1]
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&#39;/g, "'")
+      const data = JSON.parse(decoded)
+      if (data.murl) {
+        resultados.push({
+          url:   data.murl,
+          thumb: data.turl || data.murl,
+          title: data.t   || query,
+        })
+      }
+    } catch (_) { /* ignorar entradas malformadas */ }
+  }
 
-  return (parsed.results || []).slice(0, 24).map(r => ({
-    thumb:  r.thumbnail,
-    url:    r.image,
-    title:  r.title,
-    width:  r.width,
-    height: r.height,
-  }))
+  // Fallback: buscar murl directamente si el regex anterior no matcheo
+  if (resultados.length === 0) {
+    const murlRegex = /"murl":"([^"]+)"/g
+    while ((match = murlRegex.exec(html)) !== null && resultados.length < 24) {
+      const url = match[1].replace(/\\u0026/g, '&').replace(/\\\/g, '')
+      if (url.startsWith('http')) {
+        resultados.push({ url, thumb: url, title: query })
+      }
+    }
+  }
+
+  if (resultados.length === 0) {
+    throw new Error('Bing no devolvió imágenes. Verificá la conexión a internet.')
+  }
+
+  return resultados
 }
 
-// ── Servidor ───────────────────────────────────────────────────────────────
+// ── Servidor ───────────────────────────────────────────────────────────
 
 function startApiServer(getDB) {
   const server = http.createServer(async (req, res) => {
@@ -113,7 +143,6 @@ function startApiServer(getDB) {
     const url    = urlParsed.pathname
     const method = req.method
 
-    // CORS preflight
     if (method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
@@ -123,7 +152,7 @@ function startApiServer(getDB) {
       return res.end()
     }
 
-    // ── Escáner HTML ───────────────────────────────────────────────────────
+    // ── Escáner HTML ───────────────────────────────────────────────
     if (method === 'GET' && (url === '/' || url === '/escaner')) {
       const htmlPath = path.join(__dirname, 'escaner.html')
       if (fs.existsSync(htmlPath)) {
@@ -133,12 +162,12 @@ function startApiServer(getDB) {
       return json(res, 404, { error: 'escaner.html no encontrado' })
     }
 
-    // ── GET /api/imagenes?q=... ─────────────────────────────────────────────
+    // ── GET /api/imagenes?q=... ────────────────────────────────────
     if (method === 'GET' && url === '/api/imagenes') {
       const q = urlParsed.searchParams.get('q') || ''
       if (!q.trim()) return json(res, 400, { error: 'Parámetro q requerido' })
       try {
-        const imagenes = await buscarImagenesDDG(q)
+        const imagenes = await buscarImagenesBing(q)
         return json(res, 200, { ok: true, imagenes })
       } catch (e) {
         console.error('[API] Error búsqueda imágenes:', e.message)
@@ -146,7 +175,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── SCAN: el celu manda el código ──────────────────────────────────────
+    // ── SCAN: el celu manda el código ──────────────────────────────
     if (method === 'POST' && url === '/api/scan/result') {
       try {
         const body = await readBody(req)
@@ -159,7 +188,7 @@ function startApiServer(getDB) {
       }
     }
 
-    // ── SCAN: la PC consulta si hay código pendiente ───────────────────────
+    // ── SCAN: la PC consulta si hay código pendiente ─────────────────
     if (method === 'GET' && url === '/api/scan/pending') {
       if (!pendingScan) return json(res, 200, { pending: false })
       if (Date.now() - pendingScan.timestamp > 60000) {
@@ -171,7 +200,7 @@ function startApiServer(getDB) {
       return json(res, 200, result)
     }
 
-    // ── SCAN: limpiar pendiente ────────────────────────────────────────────
+    // ── SCAN: limpiar pendiente ───────────────────────────────────
     if (method === 'DELETE' && url === '/api/scan/pending') {
       pendingScan = null
       return json(res, 200, { ok: true })
@@ -179,7 +208,7 @@ function startApiServer(getDB) {
 
     const db = getDB()
 
-    // ── GET /api/productos ─────────────────────────────────────────────────
+    // ── GET /api/productos ─────────────────────────────────────────
     if (method === 'GET' && url === '/api/productos') {
       try {
         const rows = db.prepare('SELECT * FROM productos ORDER BY nombre ASC').all()
@@ -187,7 +216,7 @@ function startApiServer(getDB) {
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
 
-    // ── GET /api/productos/:codigo ─────────────────────────────────────────
+    // ── GET /api/productos/:codigo ─────────────────────────────────
     const matchCodigo = url.match(/^\/api\/productos\/(.+)$/)
     if (method === 'GET' && matchCodigo) {
       try {
@@ -198,7 +227,7 @@ function startApiServer(getDB) {
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
 
-    // ── POST /api/productos ────────────────────────────────────────────────
+    // ── POST /api/productos ─────────────────────────────────────────
     if (method === 'POST' && url === '/api/productos') {
       try {
         const body = await readBody(req)
@@ -223,7 +252,7 @@ function startApiServer(getDB) {
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
 
-    // ── PUT /api/productos/:id ─────────────────────────────────────────────
+    // ── PUT /api/productos/:id ──────────────────────────────────────
     const matchId = url.match(/^\/api\/productos\/(\d+)$/)
     if (method === 'PUT' && matchId) {
       try {
