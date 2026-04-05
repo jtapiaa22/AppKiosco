@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import BuscadorProducto from '@/components/pos/BuscadorProducto'
 import Carrito from '@/components/pos/Carrito'
 import ModalCobro from '@/components/pos/ModalCobro'
 import ModalProductoNuevo from '@/components/pos/ModalProductoNuevo'
-import PantallaCajaCerrada from '@/components/pos/PantallaCajaCerrada'
 import { usePosStore, useTotalCarrito } from '@/store/posStore'
 import { useCajaStore } from '@/store/cajaStore'
 
@@ -17,10 +17,9 @@ export default function POS() {
 
   const { estado, cargarCaja } = useCajaStore()
 
-  // Verificar estado de caja al montar
   useEffect(() => { cargarCaja() }, [])
 
-  // ── Cargando estado de caja ───────────────────────────────
+  // ── Cargando ──────────────────────────────────────────────────
   if (estado === 'cargando') {
     return (
       <div className="flex h-full bg-gray-950 items-center justify-center">
@@ -29,9 +28,29 @@ export default function POS() {
     )
   }
 
-  // ── Caja cerrada: mostrar pantalla de apertura ─────────────────
+  // ── Caja cerrada: aviso con link a /caja ──────────────────────
   if (estado === 'cerrada') {
-    return <PantallaCajaCerrada />
+    return (
+      <div className="flex h-full bg-gray-950 items-center justify-center">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-sm w-full
+                        flex flex-col items-center gap-4 text-center shadow-2xl">
+          <div className="text-5xl">🔒</div>
+          <div>
+            <h2 className="text-lg font-bold text-white">La caja está cerrada</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Abrí la caja para poder registrar ventas.
+            </p>
+          </div>
+          <Link
+            to="/caja"
+            className="mt-2 px-6 py-3 rounded-xl font-bold text-sm bg-emerald-600
+                       hover:bg-emerald-500 text-white transition-all active:scale-95"
+          >
+            💰 Ir a Caja
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   // ── Caja abierta: POS normal ───────────────────────────────
