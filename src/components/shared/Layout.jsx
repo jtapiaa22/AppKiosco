@@ -1,6 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useLicencia } from '@/hooks/useLicencia'
 import BadgeLicencia from '@/components/licencia/BadgeLicencia'
+import BotonCierreCaja from '@/components/pos/BotonCierreCaja'
 
 const links = [
   { to: '/pos',      label: 'Venta',    emoji: '🛒' },
@@ -42,6 +43,11 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* Botón cerrar caja — solo visible cuando la caja está abierta */}
+        <div className="px-3 pb-2">
+          <BotonCierreCaja />
+        </div>
 
         {/* Footer del sidebar */}
         <div className="px-4 py-3 border-t border-gray-800">

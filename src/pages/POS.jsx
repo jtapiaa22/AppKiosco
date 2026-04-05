@@ -1,18 +1,40 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import BuscadorProducto from '@/components/pos/BuscadorProducto'
 import Carrito from '@/components/pos/Carrito'
 import ModalCobro from '@/components/pos/ModalCobro'
 import ModalProductoNuevo from '@/components/pos/ModalProductoNuevo'
+import PantallaCajaCerrada from '@/components/pos/PantallaCajaCerrada'
 import { usePosStore, useTotalCarrito } from '@/store/posStore'
+import { useCajaStore } from '@/store/cajaStore'
 
 export default function POS() {
-  const [modalCobro, setModalCobro] = useState(false)
+  const [modalCobro, setModalCobro]       = useState(false)
   const [productoNuevo, setProductoNuevo] = useState(null)
-  const carrito       = usePosStore(s => s.carrito)
+  const carrito        = usePosStore(s => s.carrito)
   const limpiarCarrito = usePosStore(s => s.limpiarCarrito)
-  const total         = useTotalCarrito() // selector reactivo → re-render solo cuando cambia el total
-  const tieneItems    = carrito.length > 0
+  const total          = useTotalCarrito()
+  const tieneItems     = carrito.length > 0
 
+  const { estado, cargarCaja } = useCajaStore()
+
+  // Verificar estado de caja al montar
+  useEffect(() => { cargarCaja() }, [])
+
+  // ── Cargando estado de caja ───────────────────────────────
+  if (estado === 'cargando') {
+    return (
+      <div className="flex h-full bg-gray-950 items-center justify-center">
+        <div className="w-7 h-7 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  // ── Caja cerrada: mostrar pantalla de apertura ─────────────────
+  if (estado === 'cerrada') {
+    return <PantallaCajaCerrada />
+  }
+
+  // ── Caja abierta: POS normal ───────────────────────────────
   return (
     <div className="flex h-full bg-gray-950">
 

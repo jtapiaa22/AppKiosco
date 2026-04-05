@@ -3,6 +3,7 @@ import TarjetasResumen from '@/components/reportes/TarjetasResumen'
 import GraficoVentas from '@/components/reportes/GraficoVentas'
 import TopProductos from '@/components/reportes/TopProductos'
 import PanelAlertas from '@/components/reportes/PanelAlertas'
+import TablaVentas from '@/components/reportes/TablaVentas'
 
 const PERIODOS = [
   { id: 'hoy',    label: 'Hoy' },
@@ -51,6 +52,8 @@ export default function Reportes() {
             <div className="lg:col-span-2 space-y-5">
               <GraficoVentas ventasPorDia={datos?.ventasPorDia} />
               <TopProductos productos={datos?.topProductos} />
+              {/* Tabla de ventas del período seleccionado */}
+              <TablaVentas periodo={periodo} />
             </div>
             <div>
               <PanelAlertas
