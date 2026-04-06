@@ -1,103 +1,149 @@
-# 🏪 KioscoApp
+# 🏪 AppKiosco
 
-Sistema de gestión para kioscos. Aplicación de escritorio construida con **Electron + React + Vite + Tailwind CSS + SQLite**.
+App de escritorio para la gestión integral de kioscos. Construida con **Electron + React + Vite + Tailwind + SQLite**.
 
-## Funcionalidades
+---
 
-- **POS** — Punto de venta con búsqueda de productos y escaner de código de barras
-- **Stock** — Gestión de inventario (alta, baja, modificación de productos)
-- **Fiados** — Registro de ventas a crédito por cliente
-- **Clientes** — ABM de clientes
-- **Reportes** — Reportes de ventas y movimientos
-- **Licencias** — Sistema de activación con servidor propio
+## ✨ Módulos
 
-## Tecnologías
-
-| Capa | Tecnología |
+| Módulo | Descripción |
 |---|---|
-| Shell de escritorio | Electron 29 |
-| UI | React 18 + Vite 5 |
-| Estilos | Tailwind CSS 3 |
-| Estado global | Zustand 4 |
-| Base de datos | SQLite vía better-sqlite3 |
-| Rutas | React Router DOM 6 (HashRouter) |
-| Notificaciones | react-hot-toast |
-| Escaner | Quagga (códigos de barra por cámara) |
+| **POS** | Punto de venta con búsqueda por nombre o código de barras |
+| **Stock** | Gestión de productos, precios y cantidades |
+| **Caja** | Apertura y cierre de caja diaria |
+| **Fiados** | Control de deudas y abonos por cliente |
+| **Clientes** | ABM de clientes |
+| **Reportes** | Ventas del día / semana / mes, top productos, alertas de stock |
+| **Licencia** | Activación y validación contra servidor propio |
 
-## Estructura del proyecto
+---
 
-```
-AppKiosco/
-├── electron/          # Proceso principal de Electron (main, preload, IPC, license, DB)
-├── src/
-│   ├── components/    # Componentes UI organizados por módulo (pos, stock, fiados, shared…)
-│   ├── pages/         # Una page por sección (POS, Stock, Fiados, Clientes, Reportes, Licencia)
-│   ├── services/      # Capa de datos (database.js, license.js, barcode.js)
-│   └── store/         # Estado global con Zustand (posStore.js)
-├── database/          # Archivos de base de datos SQLite y migraciones
-├── scripts/           # Scripts de migración y seed
-├── license-server/    # Servidor de activación de licencias
-├── docs/              # Documentación adicional
-└── package.json
-```
+## 🚀 Instalación y desarrollo
 
-## Instalación y uso
+### Prerrequisitos
 
-### Requisitos previos
+- Node.js 18+
+- npm 9+
 
-- Node.js 18 o superior
-- npm 9 o superior
-
-### Instalar dependencias
+### 1. Clonar e instalar dependencias
 
 ```bash
+git clone https://github.com/jtapiaa22/AppKiosco.git
+cd AppKiosco
 npm install
 ```
 
-### Inicializar la base de datos
+### 2. Crear la base de datos local
 
 ```bash
-npm run db:migrate   # Crea las tablas
-npm run db:seed      # Carga datos de ejemplo (opcional)
+npm run db:migrate
+# Opcional: cargar datos de prueba
+npm run db:seed
 ```
 
-### Modo desarrollo
-
-Levantar React + Electron juntos:
+### 3. Levantar en modo desarrollo
 
 ```bash
-npm run electron
-```
-
-O por separado:
-
-```bash
-# Terminal 1 — servidor Vite
-npm run dev:react
-
-# Terminal 2 — Electron (espera a que Vite esté listo)
+# Inicia Vite + Electron en paralelo
 npm run dev:electron
 ```
 
-Solo la UI en el navegador (sin Electron):
+### 4. Solo la UI (sin Electron)
 
 ```bash
+npm run dev:react
+```
+
+---
+
+## 📦 Build para distribución
+
+```bash
+# Linux (.deb / .AppImage)
+npm run build:linux
+
+# Windows (.exe instalador)
+npm run build:win
+```
+
+El instalador generado queda en `dist/`.
+
+---
+
+## 🔑 Servidor de licencias
+
+El servidor de licencias es una API Express independiente que valida y activa claves.
+
+### Setup local
+
+```bash
+cd license-server
+npm install
+
+# Copiar variables de entorno
+cp .env.example .env
+# Editar .env y setear ADMIN_TOKEN con un valor secreto real
+
+# Iniciar en desarrollo
 npm run dev
 ```
 
-### Build de producción
+### Comandos admin
 
 ```bash
-npm run build          # Detecta plataforma actual
-npm run build:linux    # AppImage + .deb
-npm run build:win      # Instalador NSIS (.exe)
+# Generar nueva clave de licencia
+npm run gen
+
+# Listar todas las licencias
+npm run list
+
+# Revocar una clave
+npm run revoke <KEY>
 ```
 
-El instalador se genera en `dist-electron/`.
+### Deploy en producción (Railway / Render)
 
-## Notas de desarrollo
+1. Crear un nuevo proyecto en [Railway](https://railway.app) o [Render](https://render.com)
+2. Conectar el repo y apuntar al directorio `license-server/`
+3. Configurar las variables de entorno:
+   - `ADMIN_TOKEN` — generar con: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+   - `NODE_ENV=production`
+4. Una vez deployado, actualizar `LICENSE_SERVER_URL` en `electron/license.js` con la URL del servidor
 
-- Se usa `HashRouter` (no `BrowserRouter`) porque Electron carga archivos locales sin servidor HTTP.
-- La comunicación entre el renderer (React) y el proceso principal (Electron) se hace vía IPC usando `window.electronAPI` y `window.api`, expuestos por `electron/preload.js`.
-- En modo dev web puro (sin Electron), `database.js` y `license.js` activan mocks automáticamente para no bloquear el desarrollo.
-- El alias `@/` apunta a `src/` (configurado en `vite.config.js`).
+---
+
+## 🗂️ Estructura del proyecto
+
+```
+AppKiosco/
+├── electron/               ← proceso principal de Electron
+│   ├── main.js             ← ventana + IPC handlers
+│   ├── preload.js          ← bridge seguro al renderer
+│   └── license.js          ← validación/activación de licencias
+├── src/                    ← UI React
+│   ├── components/         ← componentes por módulo
+│   ├── hooks/              ← hooks personalizados
+│   ├── pages/              ← una page por módulo
+│   ├── services/           ← acceso a datos (database.js, etc.)
+│   └── store/              ← estado global con Zustand
+├── database/               ← migraciones SQL
+├── license-server/         ← servidor Express de licencias
+└── package.json
+```
+
+---
+
+## 🔒 Seguridad
+
+- La base de datos de la app (`kiosco.db`) **nunca se sube al repo** (`.gitignore`)
+- La base de datos de licencias (`licenses.db`) **nunca se sube al repo**
+- El `ADMIN_TOKEN` se configura mediante variables de entorno, nunca hardcodeado
+- El `machine_id` se deriva de la MAC address del hardware (estable, no manipulable)
+- La encryption key del store local se deriva dinámicamente del `machine_id`
+- El servidor tiene rate limiting: 15 intentos/15min en validación, 5/15min en activación
+
+---
+
+## 📄 Licencia
+
+Proyecto privado. Todos los derechos reservados © 2026 Jorge Alejandro Tapia Ahumada.
