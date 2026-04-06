@@ -13,7 +13,7 @@ let tunnelUrl = null
 let ngrokProc = null
 
 // Rutas absolutas donde puede estar ngrok en Linux/Mac
-const NGROK_CANDIDATES = [
+const NGROK_CANDIDATES_UNIX = [
   '/usr/local/bin/ngrok',
   '/usr/bin/ngrok',
   '/snap/bin/ngrok',
@@ -22,6 +22,21 @@ const NGROK_CANDIDATES = [
   path.join(process.env.HOME || '', '.local/bin/ngrok'),
   path.join(process.env.HOME || '', 'bin/ngrok'),
 ]
+
+// Rutas absolutas donde puede estar ngrok en Windows
+const NGROK_CANDIDATES_WIN = [
+  path.join('C:', 'ngrok', 'ngrok.exe'),
+  path.join('C:', 'Program Files', 'ngrok', 'ngrok.exe'),
+  path.join('C:', 'Program Files (x86)', 'ngrok', 'ngrok.exe'),
+  path.join(process.env.LOCALAPPDATA  || '', 'ngrok', 'ngrok.exe'),
+  path.join(process.env.USERPROFILE   || '', 'ngrok', 'ngrok.exe'),
+  path.join(process.env.USERPROFILE   || '', 'AppData', 'Local', 'ngrok', 'ngrok.exe'),
+  path.join(process.env.USERPROFILE   || '', 'scoop', 'shims', 'ngrok.exe'),
+]
+
+const NGROK_CANDIDATES = process.platform === 'win32'
+  ? NGROK_CANDIDATES_WIN
+  : NGROK_CANDIDATES_UNIX
 
 function findNgrok() {
   // 1. Buscar en rutas conocidas directamente
@@ -34,11 +49,15 @@ function findNgrok() {
     } catch { /* ignorar */ }
   }
 
-  // 2. Intentar `which` con PATH enriquecido manualmente
+  // 2. Intentar resolución por PATH del sistema
   try {
-    const result = execSync('which ngrok || command -v ngrok', {
+    const cmd = process.platform === 'win32'
+      ? 'where ngrok'
+      : 'which ngrok || command -v ngrok'
+    const shell = process.platform === 'win32' ? undefined : '/bin/bash'
+    const result = execSync(cmd, {
       encoding: 'utf8',
-      shell: '/bin/bash',
+      shell,
       env: {
         ...process.env,
         PATH: [
@@ -47,11 +66,11 @@ function findNgrok() {
           '/usr/bin',
           '/snap/bin',
           '/opt/homebrew/bin',
-        ].filter(Boolean).join(':'),
+        ].filter(Boolean).join(process.platform === 'win32' ? ';' : ':'),
       },
-    }).trim()
+    }).trim().split('\n')[0].trim() // `where` puede devolver múltiples líneas
     if (result && fs.existsSync(result)) {
-      console.log('[ngrok] Encontrado via which:', result)
+      console.log('[ngrok] Encontrado via PATH:', result)
       return result
     }
   } catch { /* ngrok no está en PATH */ }
@@ -72,7 +91,12 @@ function startNgrok(port = 3001) {
 
     const env = {
       ...process.env,
-      PATH: [process.env.PATH, '/usr/local/bin', '/usr/bin', '/snap/bin'].filter(Boolean).join(':'),
+      PATH: [
+        process.env.PATH,
+        '/usr/local/bin',
+        '/usr/bin',
+        '/snap/bin',
+      ].filter(Boolean).join(process.platform === 'win32' ? ';' : ':'),
     }
 
     ngrokProc = exec(`"${ngrokBin}" http ${port} --log=stdout --log-format=json`, { env })
