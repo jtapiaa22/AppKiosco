@@ -1,29 +1,39 @@
+import { useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { useLicencia } from '@/hooks/useLicencia'
-import BadgeLicencia   from '@/components/licencia/BadgeLicencia'
-import { useRol }      from '@/context/RolContext'
+import { useLicencia }  from '@/hooks/useLicencia'
+import BadgeLicencia    from '@/components/licencia/BadgeLicencia'
+import { useRol }       from '@/context/RolContext'
 import { tienePermiso } from '@/services/pin'
 
 const LINKS = [
-  { to: '/pos',           label: 'Venta',         emoji: '🛒' },
-  { to: '/caja',          label: 'Caja',          emoji: '💰' },
-  { to: '/stock',         label: 'Stock',         emoji: '📦' },
-  { to: '/fiados',        label: 'Fiados',        emoji: '📝' },
-  { to: '/reportes',      label: 'Reportes',      emoji: '📊' },
+  { to: '/pos',      label: 'Venta',    emoji: '🛒' },
+  { to: '/caja',     label: 'Caja',     emoji: '💰' },
+  { to: '/stock',    label: 'Stock',    emoji: '📦' },
+  { to: '/fiados',   label: 'Fiados',   emoji: '📝' },
+  { to: '/reportes', label: 'Reportes', emoji: '📊' },
 ]
 
 export default function Layout() {
-  const { estado, info }     = useLicencia()
-  const { rol, cerrarSesion, hayPin } = useRol()
-  const navigate  = useNavigate()
-  const location  = useLocation()
+  const { estado, info }              = useLicencia()
+  const { rol, cerrarSesion, hayPin, cargando } = useRol()
+  const navigate = useNavigate()
+  const location = useLocation()
 
-  // Si hay PIN activo y el rol actual no tiene permiso para la ruta actual→ redirigir a /pos
-  if (hayPin && rol && rol !== 'libre' && !tienePermiso(rol, location.pathname)) {
-    navigate('/pos', { replace: true })
-  }
+  // Redirigir si el rol no tiene permiso para la ruta actual
+  useEffect(() => {
+    if (!cargando && hayPin && rol && rol !== 'libre' && !tienePermiso(rol, location.pathname)) {
+      navigate('/pos', { replace: true })
+    }
+  }, [rol, location.pathname, hayPin, cargando])
 
-  const linksVisibles = LINKS.filter(l => tienePermiso(rol, l.to))
+  // Mientras carga o sin PIN → mostrar todos los links
+  // Con rol definido → filtrar según permisos
+  const rolEfectivo = (!cargando && rol && rol !== 'libre') ? rol : null
+  const linksVisibles = rolEfectivo
+    ? LINKS.filter(l => tienePermiso(rolEfectivo, l.to))
+    : LINKS
+
+  const puedeVerConfig = !rolEfectivo || tienePermiso(rolEfectivo, '/configuracion')
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-950">
@@ -59,8 +69,8 @@ export default function Layout() {
         {/* Footer del sidebar */}
         <div className="px-3 pb-2 border-t border-gray-800 pt-2 space-y-0.5">
 
-          {/* Configuración → solo dueño o libre */}
-          {tienePermiso(rol, '/configuracion') && (
+          {/* Configuración → solo dueño/libre, oculta para empleado */}
+          {puedeVerConfig && (
             <NavLink to="/configuracion"
               className={({ isActive }) =>
                 `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
@@ -73,8 +83,8 @@ export default function Layout() {
             </NavLink>
           )}
 
-          {/* Chip de rol + cerrar sesión */}
-          {hayPin && rol && (
+          {/* Chip de rol + cerrar sesión (solo cuando hay PIN activo) */}
+          {hayPin && rol && rol !== 'libre' && (
             <div className="flex items-center justify-between px-3 py-2">
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                 rol === 'dueno'
