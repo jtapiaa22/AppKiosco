@@ -5,7 +5,7 @@
  *
  * Roles:
  *   'dueno'    → acceso total (todas las páginas)
- *   'empleado' → solo Venta, Fiados, Clientes
+ *   'empleado' → Venta, Caja, Fiados, Clientes
  *   ''         → sin PIN configurado, acceso total sin pedir nada
  *
  * El PIN nunca se guarda en texto plano: se hashea con SHA-256
@@ -65,7 +65,7 @@ export async function verificarPin(pinIngresado) {
 // ---------------------------------------------------------------------------
 const PERMISOS = {
   dueno   : ['/pos', '/caja', '/stock', '/fiados', '/clientes', '/reportes', '/configuracion'],
-  empleado: ['/pos', '/fiados', '/clientes'],
+  empleado: ['/pos', '/caja', '/fiados', '/clientes'],
 }
 
 export function tienePermiso(rol, ruta) {
