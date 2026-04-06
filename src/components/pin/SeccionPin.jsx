@@ -1,19 +1,14 @@
 /**
  * SeccionPin.jsx
  *
- * Sección dentro de Configuración para gestionar los PINs.
- * Solo visible para el rol 'dueno'.
- *
- * Permite:
- *   - Configurar PIN del dueño
- *   - Configurar PIN del empleado
- *   - Borrar PIN (dejar campo vacío = deshabilitar)
+ * Sección en Configuración para gestionar el PIN único de acceso a la app.
+ * Un solo PIN: quien lo sabe, entra con acceso total.
  */
 
 import { useState, useEffect } from 'react'
-import toast  from 'react-hot-toast'
-import { getPinStatus, setPin } from '@/services/pin'
-import { useRol } from '@/context/RolContext'
+import toast from 'react-hot-toast'
+import { hayPinConfigurado, setPin } from '@/services/pin'
+import { useAcceso } from '@/context/AccesoContext'
 
 function InputPin({ value, onChange, placeholder }) {
   const [visible, setVisible] = useState(false)
@@ -26,7 +21,7 @@ function InputPin({ value, onChange, placeholder }) {
         placeholder={placeholder}
         inputMode="numeric"
         maxLength={6}
-        className="w-full px-3 py-2 pr-10 rounded-xl bg-gray-800 border border-gray-700
+        className="w-full px-3 py-2 pr-16 rounded-xl bg-gray-800 border border-gray-700
                    text-white text-sm placeholder:text-gray-600
                    focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40
                    tracking-[0.3em] transition-all"
@@ -44,144 +39,91 @@ function InputPin({ value, onChange, placeholder }) {
 }
 
 export default function SeccionPin() {
-  const { rol } = useRol()
+  const { recargarPin } = useAcceso()
 
-  const [status,       setStatus]       = useState({ tienePinDueno: false, tienePinEmpleado: false })
-  const [pinDueno,     setPinDueno]     = useState('')
-  const [pinEmpleado,  setPinEmpleado]  = useState('')
-  const [guardando,    setGuardando]    = useState(null) // 'dueno' | 'empleado' | null
+  const [tienePin,   setTienePin]   = useState(false)
+  const [pinNuevo,   setPinNuevo]   = useState('')
+  const [guardando,  setGuardando]  = useState(false)
 
   useEffect(() => {
-    getPinStatus().then(setStatus)
+    hayPinConfigurado().then(setTienePin)
   }, [])
 
-  async function guardarPinDueno() {
-    if (pinDueno && pinDueno.length < 4) {
+  async function guardar() {
+    if (pinNuevo && pinNuevo.length < 4) {
       toast.error('El PIN debe tener al menos 4 dígitos')
       return
     }
-    setGuardando('dueno')
-    const res = await setPin('dueno', pinDueno)
-    setGuardando(null)
-    if (res.ok) {
-      toast.success(pinDueno ? 'PIN del dueño actualizado' : 'PIN del dueño eliminado')
-      setStatus(s => ({ ...s, tienePinDueno: Boolean(pinDueno) }))
-      setPinDueno('')
+    setGuardando(true)
+    const res = await setPin(pinNuevo)
+    setGuardando(false)
+
+    if (res?.ok !== false) {
+      toast.success(pinNuevo ? 'PIN actualizado' : 'PIN eliminado')
+      setTienePin(Boolean(pinNuevo))
+      setPinNuevo('')
+      await recargarPin()
     } else {
-      toast.error('Error al guardar PIN')
+      toast.error('Error al guardar el PIN')
     }
   }
 
-  async function guardarPinEmpleado() {
-    if (pinEmpleado && pinEmpleado.length < 4) {
-      toast.error('El PIN debe tener al menos 4 dígitos')
-      return
-    }
-    setGuardando('empleado')
-    const res = await setPin('empleado', pinEmpleado)
-    setGuardando(null)
-    if (res.ok) {
-      toast.success(pinEmpleado ? 'PIN del empleado actualizado' : 'PIN del empleado eliminado')
-      setStatus(s => ({ ...s, tienePinEmpleado: Boolean(pinEmpleado) }))
-      setPinEmpleado('')
-    } else {
-      toast.error('Error al guardar PIN')
-    }
+  async function eliminar() {
+    setGuardando(true)
+    await setPin('')
+    setGuardando(false)
+    toast.success('PIN eliminado')
+    setTienePin(false)
+    setPinNuevo('')
+    await recargarPin()
   }
-
-  // Solo el dueño puede ver esta sección
-  if (rol === 'empleado') return null
 
   return (
-    <section className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-5">
+    <section className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
       <div>
-        <h2 className="font-semibold text-white text-sm">🔐 PINs de acceso</h2>
+        <h2 className="font-semibold text-white text-sm">🔐 PIN de acceso</h2>
         <p className="text-xs text-gray-500 mt-0.5">
-          El PIN se pide al abrir la app. Dueño tiene acceso total; empleado solo a Venta, Fiados y Clientes.
+          Si configurás un PIN, la app lo pedirá al abrirse. Quien lo ingrese tendrá acceso total.
         </p>
       </div>
 
-      {/* PIN Dueño */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-400">👑 PIN del dueño</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${
-            status.tienePinDueno
-              ? 'bg-green-900/40 text-green-400'
-              : 'bg-gray-800 text-gray-500'
-          }`}>
-            {status.tienePinDueno ? '• Configurado' : 'Sin PIN'}
-          </span>
-        </div>
-        <InputPin
-          value={pinDueno}
-          onChange={setPinDueno}
-          placeholder={status.tienePinDueno ? 'Nuevo PIN (4–6 dígitos)' : 'Crear PIN (4–6 dígitos)'}
-        />
-        <div className="flex gap-2">
-          <button
-            onClick={guardarPinDueno}
-            disabled={guardando === 'dueno' || (!pinDueno && !status.tienePinDueno)}
-            className="flex-1 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500
-                       text-white transition-all active:scale-95 disabled:opacity-30"
-          >
-            {guardando === 'dueno' ? 'Guardando...' : pinDueno ? 'Guardar PIN' : 'Actualizar'}
-          </button>
-          {status.tienePinDueno && (
-            <button
-              onClick={() => { setPinDueno(''); guardarPinDueno() }}
-              disabled={guardando === 'dueno'}
-              className="px-3 py-2 rounded-xl text-xs font-semibold bg-red-900/40 hover:bg-red-900/60
-                         text-red-400 transition-all active:scale-95 disabled:opacity-30"
-            >
-              Eliminar
-            </button>
-          )}
-        </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">Estado actual</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full ${
+          tienePin
+            ? 'bg-green-900/40 text-green-400'
+            : 'bg-gray-800 text-gray-500'
+        }`}>
+          {tienePin ? '• PIN configurado' : 'Sin PIN (acceso libre)'}
+        </span>
       </div>
 
-      <div className="border-t border-gray-800" />
+      <InputPin
+        value={pinNuevo}
+        onChange={setPinNuevo}
+        placeholder={tienePin ? 'Nuevo PIN (4–6 dígitos)' : 'Crear PIN (4–6 dígitos)'}
+      />
 
-      {/* PIN Empleado */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-400">👷 PIN del empleado</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${
-            status.tienePinEmpleado
-              ? 'bg-blue-900/40 text-blue-400'
-              : 'bg-gray-800 text-gray-500'
-          }`}>
-            {status.tienePinEmpleado ? '• Configurado' : 'Sin PIN'}
-          </span>
-        </div>
-        <InputPin
-          value={pinEmpleado}
-          onChange={setPinEmpleado}
-          placeholder={status.tienePinEmpleado ? 'Nuevo PIN (4–6 dígitos)' : 'Crear PIN (4–6 dígitos)'}
-        />
-        <p className="text-xs text-gray-600">
-          Accede a: Venta, Fiados y Clientes. No ve Reportes, Caja ni Configuración.
-        </p>
-        <div className="flex gap-2">
+      <div className="flex gap-2">
+        <button
+          onClick={guardar}
+          disabled={guardando || !pinNuevo}
+          className="flex-1 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500
+                     text-white transition-all active:scale-95 disabled:opacity-30"
+        >
+          {guardando ? 'Guardando...' : tienePin ? 'Cambiar PIN' : 'Crear PIN'}
+        </button>
+
+        {tienePin && (
           <button
-            onClick={guardarPinEmpleado}
-            disabled={guardando === 'empleado' || (!pinEmpleado && !status.tienePinEmpleado)}
-            className="flex-1 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500
-                       text-white transition-all active:scale-95 disabled:opacity-30"
+            onClick={eliminar}
+            disabled={guardando}
+            className="px-3 py-2 rounded-xl text-xs font-semibold bg-red-900/40 hover:bg-red-900/60
+                       text-red-400 transition-all active:scale-95 disabled:opacity-30"
           >
-            {guardando === 'empleado' ? 'Guardando...' : pinEmpleado ? 'Guardar PIN' : 'Actualizar'}
+            Eliminar
           </button>
-          {status.tienePinEmpleado && (
-            <button
-              onClick={() => { setPinEmpleado(''); guardarPinEmpleado() }}
-              disabled={guardando === 'empleado'}
-              className="px-3 py-2 rounded-xl text-xs font-semibold bg-red-900/40 hover:bg-red-900/60
-                         text-red-400 transition-all active:scale-95 disabled:opacity-30"
-            >
-              Eliminar
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </section>
   )
