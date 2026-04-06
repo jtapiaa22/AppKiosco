@@ -1,7 +1,7 @@
 {
   "name": "kioscoapp-license-server",
-  "version": "1.0.0",
-  "description": "Servidor de validación de licencias para KioscoApp",
+  "version": "1.1.0",
+  "description": "Servidor de validaci\u00f3n de licencias para KioscoApp",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.4.5",
     "express": "^4.18.3",
+    "express-rate-limit": "^7.4.1",
     "nanoid": "^3.3.7"
   }
 }
