@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron')
+const { app, BrowserWindow, ipcMain, session, dialog } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 const { getDB }                                          = require('./database')
@@ -94,6 +94,35 @@ ipcMain.handle('api:getNgrokStatus', () => {
 // ---------------------------------------------------------------------------
 ipcMain.handle('backup:run',  () => runBackup())
 ipcMain.handle('backup:list', () => listBackups())
+
+// ---------------------------------------------------------------------------
+// IPC: exportar reportes (CSV / PDF)
+// ---------------------------------------------------------------------------
+ipcMain.handle('export:guardarArchivo', async (event, nombre, buffer) => {
+  // Determinar filtros según extensión del nombre sugerido
+  const esPDF = nombre.toLowerCase().endsWith('.pdf')
+  const filtros = esPDF
+    ? [{ name: 'PDF', extensions: ['pdf'] }]
+    : [{ name: 'CSV', extensions: ['csv'] }]
+
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title:       'Guardar reporte',
+    defaultPath: path.join(app.getPath('documents'), nombre),
+    filters:     filtros,
+  })
+
+  if (canceled || !filePath) return { ok: false, razon: 'cancelado' }
+
+  try {
+    // buffer llega como array normal desde el renderer (IPC no pasa Uint8Array directo)
+    fs.writeFileSync(filePath, Buffer.from(buffer))
+    console.log(`[Export] Archivo guardado: ${filePath}`)
+    return { ok: true, filePath }
+  } catch (err) {
+    console.error('[Export] Error al guardar:', err)
+    return { ok: false, razon: err.message }
+  }
+})
 
 // ---------------------------------------------------------------------------
 // App lifecycle
