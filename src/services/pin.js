@@ -1,22 +1,16 @@
 /**
  * src/services/pin.js
  *
- * Lógica de PIN y roles.
+ * PIN único de acceso a la app.
+ * No hay roles: si sabés el PIN, entrás con acceso total.
+ * Si no hay PIN configurado, la app abre directamente.
  *
- * Roles:
- *   'dueno'    → acceso total (todas las páginas)
- *   'empleado' → Venta, Caja, Fiados, Clientes
- *   ''         → sin PIN configurado, acceso total sin pedir nada
- *
- * El PIN nunca se guarda en texto plano: se hashea con SHA-256
- * usando la Web Crypto API (disponible en Electron renderer y en browsers).
+ * El PIN nunca se guarda en texto plano: se hashea con SHA-256.
  */
 
 import { getConfig, setConfig } from '@/services/configuracion'
 
-// ---------------------------------------------------------------------------
-// hashPin — SHA-256 del PIN como string hex
-// ---------------------------------------------------------------------------
+// SHA-256 del PIN como string hex
 export async function hashPin(pin) {
   const encoded = new TextEncoder().encode(pin)
   const buf     = await crypto.subtle.digest('SHA-256', encoded)
@@ -25,55 +19,22 @@ export async function hashPin(pin) {
     .join('')
 }
 
-// ---------------------------------------------------------------------------
-// getPinStatus — estado actual del sistema de PINs
-// Devuelve: { tienePinDueno, tienePinEmpleado }
-// ---------------------------------------------------------------------------
-export async function getPinStatus() {
+// true si hay un PIN configurado
+export async function hayPinConfigurado() {
   const config = await getConfig()
-  return {
-    tienePinDueno   : Boolean(config.pin_dueno),
-    tienePinEmpleado: Boolean(config.pin_empleado),
-  }
+  return Boolean(config.pin_acceso)
 }
 
-// ---------------------------------------------------------------------------
-// setPin — guarda el PIN hasheado para un rol
-// rol: 'dueno' | 'empleado'
-// ---------------------------------------------------------------------------
-export async function setPin(rol, pinNuevo) {
-  const clave = rol === 'dueno' ? 'pin_dueno' : 'pin_empleado'
-  const hash  = pinNuevo ? await hashPin(pinNuevo) : ''
-  return setConfig({ [clave]: hash })
+// Guarda el PIN hasheado (pin vacío = eliminar el PIN)
+export async function setPin(pinNuevo) {
+  const hash = pinNuevo ? await hashPin(pinNuevo) : ''
+  return setConfig({ pin_acceso: hash })
 }
 
-// ---------------------------------------------------------------------------
-// verificarPin — compara el PIN ingresado con el guardado
-// Devuelve el rol si coincide, null si no
-// ---------------------------------------------------------------------------
+// Verifica el PIN ingresado. Devuelve true si es correcto, false si no.
 export async function verificarPin(pinIngresado) {
   const config = await getConfig()
-  const hash   = await hashPin(pinIngresado)
-
-  if (config.pin_dueno    && hash === config.pin_dueno)    return 'dueno'
-  if (config.pin_empleado && hash === config.pin_empleado) return 'empleado'
-  return null
-}
-
-// ---------------------------------------------------------------------------
-// Permisos por rol
-// ---------------------------------------------------------------------------
-const PERMISOS = {
-  dueno   : ['/pos', '/caja', '/stock', '/fiados', '/clientes', '/reportes', '/configuracion'],
-  empleado: ['/pos', '/caja', '/fiados', '/clientes'],
-}
-
-export function tienePermiso(rol, ruta) {
-  if (!rol) return true  // sin PIN configurado → acceso libre
-  return (PERMISOS[rol] ?? []).includes(ruta)
-}
-
-export function getRutasPermitidas(rol) {
-  if (!rol) return Object.values(PERMISOS).flat()
-  return PERMISOS[rol] ?? []
+  if (!config.pin_acceso) return true   // sin PIN → acceso libre
+  const hash = await hashPin(pinIngresado)
+  return hash === config.pin_acceso
 }

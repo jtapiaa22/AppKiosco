@@ -1,76 +1,69 @@
 /**
  * PantallaPin.jsx
  *
- * Pantalla de ingreso de PIN al iniciar la app o al cambiar de usuario.
- * Muestra un teclado numérico visual + soporte de teclado físico.
+ * Pantalla de ingreso de PIN al abrir la app.
+ * Teclado numérico visual + soporte de teclado físico.
  * Máximo 6 dígitos.
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { verificarPin } from '@/services/pin'
-import { useRol }       from '@/context/RolContext'
+import { useAcceso }    from '@/context/AccesoContext'
 
 const MAX = 6
 
 export default function PantallaPin() {
-  const { setRol, hayPin } = useRol()
-  const [pin,     setPin]     = useState('')
-  const [error,   setError]   = useState(false)
-  const [shake,   setShake]   = useState(false)
+  const { desbloquear } = useAcceso()
+  const [pin,      setPin]      = useState('')
+  const [error,    setError]    = useState(false)
+  const [shake,    setShake]    = useState(false)
   const [checking, setChecking] = useState(false)
 
-  // -------------------------------------------------------------------------
-  // Teclado físico
-  // -------------------------------------------------------------------------
-  const handleKey = useCallback((e) => {
-    if (e.key >= '0' && e.key <= '9') agregarDigito(e.key)
-    if (e.key === 'Backspace')         borrar()
-    if (e.key === 'Enter')             confirmar()
-  }, [pin])  // eslint-disable-line
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [handleKey])
-
-  // -------------------------------------------------------------------------
-  function agregarDigito(d) {
-    if (pin.length >= MAX || checking) return
+  const agregarDigito = useCallback((d) => {
+    if (checking) return
     setError(false)
-    const nuevo = pin + d
-    setPin(nuevo)
-    if (nuevo.length === MAX) confirmarPin(nuevo)
-  }
+    setPin(prev => {
+      if (prev.length >= MAX) return prev
+      const nuevo = prev + d
+      if (nuevo.length === MAX) confirmarPin(nuevo)
+      return nuevo
+    })
+  }, [checking])
 
-  function borrar() {
+  const borrar = useCallback(() => {
     setPin(p => p.slice(0, -1))
     setError(false)
-  }
+  }, [])
 
-  async function confirmar() {
-    if (pin.length === 0) return
-    await confirmarPin(pin)
-  }
-
-  async function confirmarPin(value) {
+  const confirmarPin = useCallback(async (value) => {
     if (checking) return
     setChecking(true)
-    const rol = await verificarPin(value)
+    const ok = await verificarPin(value)
     setChecking(false)
-
-    if (rol) {
-      setRol(rol)
+    if (ok) {
+      desbloquear()
     } else {
       setError(true)
       setShake(true)
       setPin('')
       setTimeout(() => setShake(false), 500)
     }
-  }
+  }, [checking, desbloquear])
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
+  const confirmar = useCallback(() => {
+    if (pin.length > 0) confirmarPin(pin)
+  }, [pin, confirmarPin])
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key >= '0' && e.key <= '9') agregarDigito(e.key)
+      if (e.key === 'Backspace')         borrar()
+      if (e.key === 'Enter')             confirmar()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [agregarDigito, borrar, confirmar])
+
   const puntos = Array.from({ length: MAX }, (_, i) => i < pin.length)
 
   return (
@@ -98,7 +91,7 @@ export default function PantallaPin() {
           ))}
         </div>
 
-        {/* Mensaje de error */}
+        {/* Error */}
         <p className={`text-sm text-red-400 transition-opacity h-4 ${error ? 'opacity-100' : 'opacity-0'}`}>
           PIN incorrecto
         </p>
@@ -107,7 +100,6 @@ export default function PantallaPin() {
         <div className="grid grid-cols-3 gap-3 w-full">
           {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((k, i) => {
             if (k === '') return <div key={i} />
-
             const esBorrar = k === '⌫'
             return (
               <button
@@ -129,7 +121,7 @@ export default function PantallaPin() {
           })}
         </div>
 
-        {/* Botón confirmar */}
+        {/* Confirmar */}
         <button
           onClick={confirmar}
           disabled={pin.length === 0 || checking}
@@ -146,7 +138,6 @@ export default function PantallaPin() {
 
       </div>
 
-      {/* Estilos para la animación shake */}
       <style>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
