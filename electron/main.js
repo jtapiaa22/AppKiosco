@@ -86,6 +86,18 @@ ipcMain.handle('api:getNgrokStatus', () => {
 })
 
 app.whenReady().then(async () => {
+
+  // Permisos de cámara para escaner.html (servido desde Express en localhost)
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media') return callback(true)
+    callback(false)
+  })
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'media') return true
+    return false
+  })
+
   getDB()
   startApiServer(getDB)
 
