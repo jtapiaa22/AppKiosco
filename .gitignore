@@ -5,3 +5,22 @@ dist-electron
 # Certificados SSL locales — no subir al repo
 electron/*.pem
 *.pem
+
+# Bases de datos locales — NUNCA subir al repo
+*.db
+*.db-shm
+*.db-wal
+
+# Variables de entorno — NUNCA subir al repo
+.env
+.env.local
+.env.production
+.env.development
+license-server/.env
+
+# Electron Store (datos cifrados del usuario)
+app-data/
+
+# Logs
+*.log
+npm-debug.log*
