@@ -16,4 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Servidor móvil (ngrok o LAN)
   getApiUrl:      () => ipcRenderer.invoke('api:getUrl'),
   getNgrokStatus: () => ipcRenderer.invoke('api:getNgrokStatus'),
+
+  // Backup
+  backupRun:  () => ipcRenderer.invoke('backup:run'),
+  backupList: () => ipcRenderer.invoke('backup:list'),
 })
