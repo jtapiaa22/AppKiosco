@@ -4,6 +4,7 @@ import GraficoVentas from '@/components/reportes/GraficoVentas'
 import TopProductos from '@/components/reportes/TopProductos'
 import PanelAlertas from '@/components/reportes/PanelAlertas'
 import TablaVentas from '@/components/reportes/TablaVentas'
+import BotonExportar from '@/components/reportes/BotonExportar'
 
 const PERIODOS = [
   { id: 'hoy',    label: 'Hoy' },
@@ -17,14 +18,19 @@ export default function Reportes() {
   return (
     <div className="flex flex-col h-full bg-gray-950 overflow-y-auto">
 
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0 sticky top-0 bg-gray-950 z-10">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800
+                      flex-shrink-0 sticky top-0 bg-gray-950 z-10">
         <div>
           <h1 className="text-lg font-bold text-white">Reportes</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {new Date().toLocaleDateString('es-AR', {
+              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+            })}
           </p>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Selector de período */}
           <div className="flex bg-gray-800 rounded-xl p-1 border border-gray-700">
             {PERIODOS.map(p => (
               <button key={p.id} onClick={() => setPeriodo(p.id)}
@@ -34,10 +40,15 @@ export default function Reportes() {
               </button>
             ))}
           </div>
+
+          {/* Botón exportar */}
+          <BotonExportar datos={datos} periodo={periodo} />
+
+          {/* Recargar */}
           <button onClick={recargar}
             className={`w-8 h-8 rounded-xl bg-gray-800 border border-gray-700 hover:bg-gray-700
-                        text-gray-400 hover:text-white flex items-center justify-center transition-all
-                        text-sm ${cargando ? 'animate-spin' : ''}`}>↻</button>
+                        text-gray-400 hover:text-white flex items-center justify-center
+                        transition-all text-sm ${cargando ? 'animate-spin' : ''}`}>↻</button>
         </div>
       </div>
 
@@ -52,7 +63,6 @@ export default function Reportes() {
             <div className="lg:col-span-2 space-y-5">
               <GraficoVentas ventasPorDia={datos?.ventasPorDia} />
               <TopProductos productos={datos?.topProductos} />
-              {/* Tabla de ventas del período seleccionado */}
               <TablaVentas periodo={periodo} />
             </div>
             <div>

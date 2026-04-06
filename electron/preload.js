@@ -20,4 +20,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Backup
   backupRun:  () => ipcRenderer.invoke('backup:run'),
   backupList: () => ipcRenderer.invoke('backup:list'),
+
+  // Exportar reportes (CSV / PDF)
+  // buffer: number[]  — Array.from(Uint8Array) serializable por IPC
+  // nombre: string    — nombre de archivo sugerido, ej: 'reporte-2026-04-06.pdf'
+  guardarArchivo: (nombre, buffer) =>
+    ipcRenderer.invoke('export:guardarArchivo', nombre, buffer),
 })
