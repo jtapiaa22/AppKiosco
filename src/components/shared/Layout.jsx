@@ -1,18 +1,29 @@
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useLicencia } from '@/hooks/useLicencia'
-import BadgeLicencia from '@/components/licencia/BadgeLicencia'
+import BadgeLicencia   from '@/components/licencia/BadgeLicencia'
+import { useRol }      from '@/context/RolContext'
+import { tienePermiso } from '@/services/pin'
 
-const links = [
-  { to: '/pos',           label: 'Venta',          emoji: '🛒' },
-  { to: '/caja',          label: 'Caja',           emoji: '💰' },
-  { to: '/stock',         label: 'Stock',          emoji: '📦' },
-  { to: '/fiados',        label: 'Fiados',         emoji: '📝' },
-  { to: '/reportes',      label: 'Reportes',       emoji: '📊' },
-  { to: '/configuracion', label: 'Configuración',  emoji: '⚙️' },
+const LINKS = [
+  { to: '/pos',           label: 'Venta',         emoji: '🛒' },
+  { to: '/caja',          label: 'Caja',          emoji: '💰' },
+  { to: '/stock',         label: 'Stock',         emoji: '📦' },
+  { to: '/fiados',        label: 'Fiados',        emoji: '📝' },
+  { to: '/reportes',      label: 'Reportes',      emoji: '📊' },
 ]
 
 export default function Layout() {
-  const { estado, info } = useLicencia()
+  const { estado, info }     = useLicencia()
+  const { rol, cerrarSesion, hayPin } = useRol()
+  const navigate  = useNavigate()
+  const location  = useLocation()
+
+  // Si hay PIN activo y el rol actual no tiene permiso para la ruta actual→ redirigir a /pos
+  if (hayPin && rol && rol !== 'libre' && !tienePermiso(rol, location.pathname)) {
+    navigate('/pos', { replace: true })
+  }
+
+  const linksVisibles = LINKS.filter(l => tienePermiso(rol, l.to))
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-950">
@@ -31,7 +42,7 @@ export default function Layout() {
 
         {/* Navegación principal */}
         <nav className="flex-1 p-3 space-y-0.5">
-          {links.slice(0, 5).map(l => (
+          {linksVisibles.map(l => (
             <NavLink key={l.to} to={l.to}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
@@ -45,19 +56,44 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Configuración al fondo del sidebar */}
-        <div className="px-3 pb-2 border-t border-gray-800 pt-2">
-          <NavLink to="/configuracion"
-            className={({ isActive }) =>
-              `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
-               ${isActive
-                 ? 'bg-sky-600 text-white'
-                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`
-            }>
-            <span className="text-base">⚙️</span>
-            Configuración
-          </NavLink>
-          <p className="text-xs text-gray-700 font-mono px-3 pt-2">v1.0.0</p>
+        {/* Footer del sidebar */}
+        <div className="px-3 pb-2 border-t border-gray-800 pt-2 space-y-0.5">
+
+          {/* Configuración → solo dueño o libre */}
+          {tienePermiso(rol, '/configuracion') && (
+            <NavLink to="/configuracion"
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                 ${isActive
+                   ? 'bg-sky-600 text-white'
+                   : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`
+              }>
+              <span className="text-base">⚙️</span>
+              Configuración
+            </NavLink>
+          )}
+
+          {/* Chip de rol + cerrar sesión */}
+          {hayPin && rol && (
+            <div className="flex items-center justify-between px-3 py-2">
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                rol === 'dueno'
+                  ? 'bg-amber-900/40 text-amber-400'
+                  : 'bg-blue-900/40 text-blue-400'
+              }`}>
+                {rol === 'dueno' ? '👑 Dueño' : '👷 Empleado'}
+              </span>
+              <button
+                onClick={cerrarSesion}
+                title="Cambiar usuario"
+                className="text-gray-600 hover:text-gray-300 text-xs transition-colors"
+              >
+                🔓
+              </button>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-700 font-mono px-3 pt-1">v1.0.0</p>
         </div>
 
       </aside>
