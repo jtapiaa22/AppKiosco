@@ -25,7 +25,11 @@ const NGROK_CANDIDATES_UNIX = [
 
 // Rutas absolutas donde puede estar ngrok en Windows
 const NGROK_CANDIDATES_WIN = [
+  // Instalación manual en C:\ngrok
   path.join('C:', 'ngrok', 'ngrok.exe'),
+  // Microsoft Store (WindowsApps) — detección por LOCALAPPDATA del usuario actual
+  path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'ngrok.exe'),
+  // Otras rutas comunes
   path.join('C:', 'Program Files', 'ngrok', 'ngrok.exe'),
   path.join('C:', 'Program Files (x86)', 'ngrok', 'ngrok.exe'),
   path.join(process.env.LOCALAPPDATA  || '', 'ngrok', 'ngrok.exe'),
@@ -68,7 +72,7 @@ function findNgrok() {
           '/opt/homebrew/bin',
         ].filter(Boolean).join(process.platform === 'win32' ? ';' : ':'),
       },
-    }).trim().split('\n')[0].trim() // `where` puede devolver múltiples líneas
+    }).trim().split('\n')[0].trim()
     if (result && fs.existsSync(result)) {
       console.log('[ngrok] Encontrado via PATH:', result)
       return result
