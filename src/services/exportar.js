@@ -2,14 +2,17 @@
  * exportar.js
  *
  * Servicio de exportación de reportes a CSV y PDF.
- * Usa jsPDF + jsPDF-AutoTable (cargados desde CDN en index.html o importados vía npm).
+ * Usa jsPDF + jsPDF-AutoTable.
  *
  * Funciones exportadas:
  *  - exportarCSV(datos, periodo)  → descarga un .csv
  *  - exportarPDF(datos, periodo)  → descarga un .pdf
- *
- * Ambas reciben el objeto `datos` que devuelve useReportes y el periodo activo.
  */
+
+// Imports estáticos: jspdf-autotable se registra como plugin sobre el prototipo
+// de jsPDF en el momento del import. Con imports dinámicos esa conexión se pierde.
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,31 +31,26 @@ function fechaHoy() {
 }
 
 function slugFecha() {
-  return new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
+  return new Date().toISOString().slice(0, 10)
 }
 
 function moneda(n) {
   return `$${Number(n || 0).toLocaleString('es-AR')}`
 }
 
-// Guarda un Uint8Array o string en disco usando el diálogo nativo de Electron.
-// Si no está en Electron (modo dev web), usa un blob link.
 async function guardarArchivo(nombre, contenido, tipo) {
   if (window.electronAPI?.guardarArchivo) {
-    // contenido puede ser Uint8Array (PDF) o string (CSV)
     const buffer = typeof contenido === 'string'
       ? Array.from(new TextEncoder().encode(contenido))
       : Array.from(contenido)
     await window.electronAPI.guardarArchivo(nombre, buffer)
     return
   }
-
-  // Fallback web: descarga directa con blob
   const blob = typeof contenido === 'string'
     ? new Blob([contenido], { type: 'text/csv;charset=utf-8;' })
     : new Blob([contenido], { type: tipo })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+  const a   = document.createElement('a')
   a.href     = url
   a.download = nombre
   a.click()
@@ -65,7 +63,7 @@ async function guardarArchivo(nombre, contenido, tipo) {
 
 function filaCSV(celdas) {
   return celdas
-    .map(c => `"${String(c ?? '').replace(/"/g, '""')}"`) // escapa comillas
+    .map(c => `"${String(c ?? '').replace(/"/g, '""')}"`)
     .join(',') + '\r\n'
 }
 
@@ -77,7 +75,6 @@ function construirCSV(datos, periodo) {
   csv += filaCSV([`Reporte KioscoApp — ${label}`, `Generado: ${hoy}`])
   csv += '\r\n'
 
-  // — Resumen general —
   if (datos.resumen) {
     const r = datos.resumen
     csv += filaCSV(['RESUMEN GENERAL'])
@@ -92,7 +89,6 @@ function construirCSV(datos, periodo) {
     csv += '\r\n'
   }
 
-  // — Top productos —
   if (datos.topProductos?.length) {
     csv += filaCSV(['TOP PRODUCTOS'])
     csv += filaCSV(['Producto', 'Unidades vendidas', 'Total recaudado'])
@@ -102,34 +98,25 @@ function construirCSV(datos, periodo) {
     csv += '\r\n'
   }
 
-  // — Rentabilidad —
   if (datos.rentabilidad?.length) {
     csv += filaCSV(['RENTABILIDAD POR PRODUCTO'])
     csv += filaCSV(['Producto', 'Unidades', 'Ingresos', 'Costos', 'Ganancia'])
     datos.rentabilidad.forEach(p => {
       csv += filaCSV([
-        p.nombre,
-        p.unidades,
-        moneda(p.ingresos),
-        moneda(p.costos),
-        moneda(p.ganancia),
+        p.nombre, p.unidades,
+        moneda(p.ingresos), moneda(p.costos), moneda(p.ganancia),
       ])
     })
     csv += '\r\n'
   }
 
-  // — Fiados pendientes —
   if (datos.fiados) {
     csv += filaCSV(['FIADOS PENDIENTES'])
     csv += filaCSV(['Clientes con deuda', 'Deuda total acumulada'])
-    csv += filaCSV([
-      datos.fiados.cant_clientes,
-      moneda(datos.fiados.deuda_total),
-    ])
+    csv += filaCSV([datos.fiados.cant_clientes, moneda(datos.fiados.deuda_total)])
     csv += '\r\n'
   }
 
-  // — Stock bajo —
   if (datos.stockBajo?.length) {
     csv += filaCSV(['STOCK BAJO'])
     csv += filaCSV(['Producto', 'Stock actual', 'Stock mínimo'])
@@ -148,43 +135,26 @@ export async function exportarCSV(datos, periodo) {
 }
 
 // ---------------------------------------------------------------------------
-// PDF — requiere jsPDF + jsPDF-AutoTable
-//
-// Instalación:  npm install jspdf jspdf-autotable
+// PDF
 // ---------------------------------------------------------------------------
 
-async function obtenerJsPDF() {
-  // Import dinámico para no romper si el usuario no los tiene instalados
-  try {
-    const { default: jsPDF }    = await import('jspdf')
-    await import('jspdf-autotable')
-    return jsPDF
-  } catch {
-    throw new Error(
-      'jsPDF no está instalado. Ejecutá: npm install jspdf jspdf-autotable'
-    )
-  }
-}
-
 export async function exportarPDF(datos, periodo) {
-  const jsPDF  = await obtenerJsPDF()
-  const label  = LABELS_PERIODO[periodo] ?? periodo
-  const hoy    = fechaHoy()
+  const label = LABELS_PERIODO[periodo] ?? periodo
+  const hoy   = fechaHoy()
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
-  // Colores corporativos (oscuro sobre blanco para impresión)
-  const GRIS_TITULO  = [30,  30,  30]
-  const GRIS_HEADER  = [50,  50,  50]
-  const GRIS_FILA    = [245, 245, 245]
-  const VERDE        = [22, 163, 74]   // emerald-600
-  const ROJO         = [220, 38, 38]   // red-600
-  const AMBER        = [180, 83, 9]    // amber-700
+  const GRIS_TITULO = [30,  30,  30]
+  const GRIS_HEADER = [50,  50,  50]
+  const GRIS_FILA   = [245, 245, 245]
+  const VERDE       = [22,  163, 74]
+  const ROJO        = [220, 38,  38]
+  const AMBER       = [180, 83,  9]
 
   const MARGEN = 15
   let y = MARGEN
 
-  // — Encabezado del documento —
+  // Encabezado
   doc.setFillColor(...GRIS_TITULO)
   doc.rect(0, 0, 210, 22, 'F')
   doc.setTextColor(255, 255, 255)
@@ -197,7 +167,6 @@ export async function exportarPDF(datos, periodo) {
   doc.setTextColor(...GRIS_TITULO)
   y = 30
 
-  // Helper para títulos de sección
   function tituloSeccion(texto, color = GRIS_TITULO) {
     doc.setFontSize(10)
     doc.setFont('helvetica', 'bold')
@@ -208,9 +177,10 @@ export async function exportarPDF(datos, periodo) {
     y += 6
   }
 
-  // Helper para tabla automática
+  // Usamos autoTable como función directa (no como método del doc)
+  // para compatibilidad garantizada con el import nombrado
   function tabla(columnas, filas, opciones = {}) {
-    doc.autoTable({
+    autoTable(doc, {
       startY: y,
       margin: { left: MARGEN, right: MARGEN },
       head:   [columnas],
@@ -231,20 +201,18 @@ export async function exportarPDF(datos, periodo) {
     y = doc.lastAutoTable.finalY + 8
   }
 
-  // — 1. Resumen general — tarjetas en fila —
+  // 1. Resumen general
   if (datos.resumen) {
     const r = datos.resumen
     tituloSeccion('Resumen general')
-
     const tarjetas = [
-      { label: 'Ventas realizadas', valor: r.cant_ventas,             color: GRIS_TITULO },
-      { label: 'Total vendido',     valor: moneda(r.total_vendido),   color: VERDE },
-      { label: 'Efectivo',          valor: moneda(r.total_efectivo),  color: GRIS_TITULO },
-      { label: 'Transferencia',     valor: moneda(r.total_transferencia), color: GRIS_TITULO },
-      { label: 'Fiado',             valor: moneda(r.total_fiado),     color: ROJO },
+      { label: 'Ventas realizadas',  valor: r.cant_ventas,                   color: GRIS_TITULO },
+      { label: 'Total vendido',      valor: moneda(r.total_vendido),         color: VERDE },
+      { label: 'Efectivo',           valor: moneda(r.total_efectivo),        color: GRIS_TITULO },
+      { label: 'Transferencia',      valor: moneda(r.total_transferencia),   color: GRIS_TITULO },
+      { label: 'Fiado',              valor: moneda(r.total_fiado),           color: ROJO },
     ]
-
-    const W = (210 - MARGEN * 2 - 4 * 3) / 5 // ancho de cada tarjeta
+    const W = (210 - MARGEN * 2 - 4 * 3) / 5
     tarjetas.forEach((t, i) => {
       const x = MARGEN + i * (W + 3)
       doc.setFillColor(245, 245, 245)
@@ -262,7 +230,7 @@ export async function exportarPDF(datos, periodo) {
     doc.setTextColor(...GRIS_TITULO)
   }
 
-  // — 2. Top productos —
+  // 2. Top productos
   if (datos.topProductos?.length) {
     tituloSeccion('Top productos más vendidos')
     tabla(
@@ -271,20 +239,20 @@ export async function exportarPDF(datos, periodo) {
     )
   }
 
-  // — 3. Rentabilidad —
+  // 3. Rentabilidad
   if (datos.rentabilidad?.length) {
-    // Salto de página si no alcanza espacio
     if (y > 230) { doc.addPage(); y = MARGEN }
     tituloSeccion('Rentabilidad por producto', VERDE)
     tabla(
       ['Producto', 'Unidades', 'Ingresos', 'Costos', 'Ganancia'],
       datos.rentabilidad.map(p => [
-        p.nombre, p.unidades, moneda(p.ingresos), moneda(p.costos), moneda(p.ganancia),
+        p.nombre, p.unidades,
+        moneda(p.ingresos), moneda(p.costos), moneda(p.ganancia),
       ])
     )
   }
 
-  // — 4. Fiados —
+  // 4. Fiados
   if (datos.fiados) {
     if (y > 230) { doc.addPage(); y = MARGEN }
     tituloSeccion('Fiados pendientes', AMBER)
@@ -294,35 +262,28 @@ export async function exportarPDF(datos, periodo) {
     )
   }
 
-  // — 5. Stock bajo —
+  // 5. Stock bajo
   if (datos.stockBajo?.length) {
     if (y > 230) { doc.addPage(); y = MARGEN }
     tituloSeccion('Productos con stock bajo', ROJO)
     tabla(
       ['Producto', 'Stock actual', 'Stock mínimo'],
       datos.stockBajo.map(p => [p.nombre, p.stock_actual, p.stock_minimo]),
-      {
-        bodyStyles: { textColor: ROJO },
-      }
+      { bodyStyles: { textColor: ROJO } }
     )
   }
 
-  // Pie de página en todas las páginas
+  // Pie de página
   const totalPaginas = doc.getNumberOfPages()
   for (let i = 1; i <= totalPaginas; i++) {
     doc.setPage(i)
     doc.setFontSize(7)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(160, 160, 160)
-    doc.text(
-      `KioscoApp  •  Página ${i} de ${totalPaginas}  •  ${hoy}`,
-      MARGEN,
-      290
-    )
+    doc.text(`KioscoApp  •  Página ${i} de ${totalPaginas}  •  ${hoy}`, MARGEN, 290)
   }
 
-  // Guardar
-  const nombre = `reporte-kiosco-${slugFecha()}.pdf`
+  const nombre   = `reporte-kiosco-${slugFecha()}.pdf`
   const pdfBytes = doc.output('arraybuffer')
   await guardarArchivo(nombre, new Uint8Array(pdfBytes), 'application/pdf')
 }
