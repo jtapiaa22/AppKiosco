@@ -3,11 +3,12 @@ import { useLicencia } from '@/hooks/useLicencia'
 import BadgeLicencia from '@/components/licencia/BadgeLicencia'
 
 const links = [
-  { to: '/pos',      label: 'Venta',    emoji: '🛒' },
-  { to: '/caja',     label: 'Caja',     emoji: '💰' },
-  { to: '/stock',    label: 'Stock',    emoji: '📦' },
-  { to: '/fiados',   label: 'Fiados',   emoji: '📝' },
-  { to: '/reportes', label: 'Reportes', emoji: '📊' },
+  { to: '/pos',           label: 'Venta',          emoji: '🛒' },
+  { to: '/caja',          label: 'Caja',           emoji: '💰' },
+  { to: '/stock',         label: 'Stock',          emoji: '📦' },
+  { to: '/fiados',        label: 'Fiados',         emoji: '📝' },
+  { to: '/reportes',      label: 'Reportes',       emoji: '📊' },
+  { to: '/configuracion', label: 'Configuración',  emoji: '⚙️' },
 ]
 
 export default function Layout() {
@@ -28,9 +29,9 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Navegación */}
+        {/* Navegación principal */}
         <nav className="flex-1 p-3 space-y-0.5">
-          {links.map(l => (
+          {links.slice(0, 5).map(l => (
             <NavLink key={l.to} to={l.to}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
@@ -44,10 +45,21 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Footer del sidebar */}
-        <div className="px-4 py-3 border-t border-gray-800">
-          <p className="text-xs text-gray-700 font-mono">v1.0.0</p>
+        {/* Configuración al fondo del sidebar */}
+        <div className="px-3 pb-2 border-t border-gray-800 pt-2">
+          <NavLink to="/configuracion"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+               ${isActive
+                 ? 'bg-sky-600 text-white'
+                 : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`
+            }>
+            <span className="text-base">⚙️</span>
+            Configuración
+          </NavLink>
+          <p className="text-xs text-gray-700 font-mono px-3 pt-2">v1.0.0</p>
         </div>
+
       </aside>
 
       <main className="flex-1 overflow-auto min-w-0">

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { checkLicense } from '@/services/license'
-import Layout   from '@/components/shared/Layout'
-import POS      from '@/pages/POS'
-import Stock    from '@/pages/Stock'
-import Fiados   from '@/pages/Fiados'
-import Reportes from '@/pages/Reportes'
-import Clientes from '@/pages/Clientes'
-import Licencia from '@/pages/Licencia'
-import Caja     from '@/pages/Caja'
+import { checkLicense }   from '@/services/license'
+import Layout             from '@/components/shared/Layout'
+import POS                from '@/pages/POS'
+import Stock              from '@/pages/Stock'
+import Fiados             from '@/pages/Fiados'
+import Reportes           from '@/pages/Reportes'
+import Clientes           from '@/pages/Clientes'
+import Licencia           from '@/pages/Licencia'
+import Caja               from '@/pages/Caja'
+import Configuracion      from '@/pages/Configuracion'
 
 export default function App() {
   const [licenciaOk, setLicenciaOk] = useState(null)
@@ -33,13 +34,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        <Route index element={<Navigate to="/pos" replace />} />
-        <Route path="pos"      element={<POS />} />
-        <Route path="caja"     element={<Caja />} />
-        <Route path="stock"    element={<Stock />} />
-        <Route path="fiados"   element={<Fiados />} />
-        <Route path="reportes" element={<Reportes />} />
-        <Route path="clientes" element={<Clientes />} />
+        <Route index              element={<Navigate to="/pos" replace />} />
+        <Route path="pos"         element={<POS />} />
+        <Route path="caja"        element={<Caja />} />
+        <Route path="stock"       element={<Stock />} />
+        <Route path="fiados"      element={<Fiados />} />
+        <Route path="reportes"    element={<Reportes />} />
+        <Route path="clientes"    element={<Clientes />} />
+        <Route path="configuracion" element={<Configuracion />} />
       </Route>
     </Routes>
   )
