@@ -1,16 +1,21 @@
 export default function TarjetaCliente({ cliente, seleccionado, onClick, onAbono }) {
-  const tieneDeuda = cliente.deuda_total > 0
+  const tieneDeuda  = cliente.deuda_total > 0
   const deudaGrande = cliente.deuda_total >= 5000
 
   return (
-    <button
+    // div en lugar de <button> para evitar nested buttons (el botón "abonar" está adentro)
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 rounded-xl border transition-all
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
+      className={`w-full text-left px-4 py-3 rounded-xl border transition-all cursor-pointer
         ${seleccionado
           ? 'bg-amber-500/10 border-amber-500/30'
           : 'bg-gray-800/40 border-gray-700/50 hover:bg-gray-800 hover:border-gray-600'}`}
     >
       <div className="flex items-center justify-between gap-3">
+
         {/* Avatar inicial */}
         <div className={`w-9 h-9 rounded-full flex items-center justify-center
                          text-sm font-bold flex-shrink-0
@@ -26,16 +31,18 @@ export default function TarjetaCliente({ cliente, seleccionado, onClick, onAbono
           )}
         </div>
 
-        {/* Deuda */}
+        {/* Deuda + botón abonar */}
         <div className="text-right flex-shrink-0">
           {tieneDeuda ? (
             <>
-              <p className={`text-sm font-bold font-mono ${deudaGrande ? 'text-red-400' : 'text-amber-400'}`}>
+              <p className={`text-sm font-bold font-mono
+                ${deudaGrande ? 'text-red-400' : 'text-amber-400'}`}>
                 ${cliente.deuda_total.toLocaleString('es-AR')}
               </p>
               <button
                 onClick={e => { e.stopPropagation(); onAbono(cliente) }}
-                className="text-xs text-emerald-500 hover:text-emerald-400 transition-colors mt-0.5 block"
+                className="text-xs text-emerald-500 hover:text-emerald-400
+                           transition-colors mt-0.5 block"
               >
                 abonar →
               </button>
@@ -44,7 +51,8 @@ export default function TarjetaCliente({ cliente, seleccionado, onClick, onAbono
             <span className="text-xs text-emerald-500 font-mono">sin deuda ✓</span>
           )}
         </div>
+
       </div>
-    </button>
+    </div>
   )
 }
